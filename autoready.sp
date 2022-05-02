@@ -4,7 +4,7 @@
 #include <tf2>
 #include <tf2_stocks>
 
-#define PLUGIN_VERSION "22w18a"
+#define PLUGIN_VERSION "22w18b"
 
 public Plugin myinfo = {
 	name = "[TF2] Auto-Ready",
@@ -58,6 +58,7 @@ public void ConVar_OnMinRatioChanged(ConVar convar, const char[] oldValue, const
 }
 
 public void OnRoundStart(Event event, const char[] name, bool dontBroadcast) {
+	PrintToServer("  ----- Readying is reenabled -----");
 	g_expectingVotes = true;
 }
 
@@ -107,7 +108,12 @@ public Action Command_PlayerReadystate(int client, const char[] command, int arg
 			(isReady?"\x07f1c232ready":"\x07999999not ready"),
 			(countCondition?"\x078fce00":"\x07f44336"),readyCount, g_minPlayers, 
 			(ratioCondition?"\x078fce00":"\x07f44336"),readyRatio*100.0, g_minRatio*100.0);
-	if (countCondition && ratioCondition) {
+	if (readyCount == playerCount) {
+		//this is a vanilla pass, we don't need to force ready
+		g_expectingVotes = false;
+		LogAction(client, -1, "[AutoReady] Vanilla condition of 100%% ready superseded", readyCount, playerCount, readyRatio*100.0);
+		PrintToChatAll("\x01[\x07E7B2FFAutoReady\x01] All Players Ready - Let's go!");
+	} else if (countCondition && ratioCondition) {
 		LogAction(client, -1, "[AutoReady] Player triggered autoReady with %d/%d players at %.2f%%", readyCount, playerCount, readyRatio*100.0);
 		PrintToChatAll("\x01[\x07E7B2FFAutoReady\x01] Enough Players Ready - Let's go!");
 		RequestFrame(ForceAllReady); //do this next frame since we still pass, i guess
