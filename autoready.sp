@@ -4,7 +4,7 @@
 #include <tf2>
 #include <tf2_stocks>
 
-#define PLUGIN_VERSION "22w18b"
+#define PLUGIN_VERSION "22w18c"
 
 public Plugin myinfo = {
 	name = "[TF2] Auto-Ready",
@@ -19,7 +19,6 @@ float g_minRatio;
 
 //set from ForceAllReady to prevent unnecessary handling of calls
 bool g_ignoreReadyCommand;
-bool g_expectingVotes;
 
 public void OnPluginStart() {
 	//hey, version convar
@@ -43,7 +42,9 @@ public void OnPluginStart() {
 	//player command to toggle ready
 	AddCommandListener(Command_PlayerReadystate, "tournament_player_readystate");
 	//with auto ready we temporarily disable the listener until a new round starts
-	HookEvent("teamplay_round_start", OnRoundStart);
+	HookEvent("teamplay_round_start", OnNextWave);
+	HookEvent("mvm_wave_complete", OnNextWave);
+	HookEvent("mvm_wave_failed", OnNextWave);
 }
 public void ConVar_OnVersionChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
 	if (!StrEqual(newValue, PLUGIN_VERSION)) {
@@ -57,9 +58,8 @@ public void ConVar_OnMinRatioChanged(ConVar convar, const char[] oldValue, const
 	g_minRatio = convar.FloatValue;
 }
 
-public void OnRoundStart(Event event, const char[] name, bool dontBroadcast) {
-	PrintToServer("  ----- Readying is reenabled -----");
-	g_expectingVotes = true;
+public void OnNextWave(Event event, const char[] name, bool dontBroadcast) {
+	g_ignoreReadyCommand = false;
 }
 
 // auto ready logic
@@ -72,7 +72,7 @@ public Action Command_PlayerReadystate(int client, const char[] command, int arg
 	//check for invalid command calls
 	if (!IsClientValid(client, .allowBots=false) || argc != 1) return Plugin_Continue;
 	//check current game state - if we are not expecting a ready, we cancel
-	if (!IsGameMvM() || IsWaveRunning() || !g_expectingVotes) {
+	if (!IsGameMvM() || IsWaveRunning()) {
 		ReplyToCommand(client, "[SM] Readying is currently not possible");
 		return Plugin_Handled;
 	}
@@ -110,7 +110,7 @@ public Action Command_PlayerReadystate(int client, const char[] command, int arg
 			(ratioCondition?"\x078fce00":"\x07f44336"),readyRatio*100.0, g_minRatio*100.0);
 	if (readyCount == playerCount) {
 		//this is a vanilla pass, we don't need to force ready
-		g_expectingVotes = false;
+		g_ignoreReadyCommand = true;
 		LogAction(client, -1, "[AutoReady] Vanilla condition of 100%% ready superseded", readyCount, playerCount, readyRatio*100.0);
 		PrintToChatAll("\x01[\x07E7B2FFAutoReady\x01] All Players Ready - Let's go!");
 	} else if (countCondition && ratioCondition) {
@@ -123,7 +123,7 @@ public Action Command_PlayerReadystate(int client, const char[] command, int arg
 
 public Action Command_ReadyAll(int client, int args) {
 	//check current game state - if we are not expecting a ready, we cancel
-	if (!IsGameMvM() || IsWaveRunning() || !g_expectingVotes) {
+	if (!IsGameMvM() || IsWaveRunning() || g_ignoreReadyCommand) {
 		ReplyToCommand(client, "[SM] Readying is currently not possible");
 	} else {
 		ShowActivity2(client, "[SM] ", "%N forced the round to start", client);
@@ -152,8 +152,7 @@ void ForceAllReady() {
 			ForceReady(client);
 		}
 	}
-	g_ignoreReadyCommand = false;
-	g_expectingVotes = false;
+	//g_ignoreReadyCommand is reset with game events
 }
 
 bool IsClientValid(int client, bool allowBots=true) {
