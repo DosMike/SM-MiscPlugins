@@ -1,0 +1,14 @@
+sourcemod 1.10
+
+spcomp -O2 autoready.sp
+spcomp -O2 slapandbury.sp
+
+with files
+ autoready.smx
+ slapandbury.smx
+:release zip Compiled.zip auto
+
+auth github %{GITHUB_TOKEN}
+with files
+ Compiled.zip
+:release github ${GITHUB_REPOSITORY} ${GITHUB_REF_NAME}
