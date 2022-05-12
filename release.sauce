@@ -2,8 +2,13 @@ sourcemod 1.10
 
 auth github %{GITHUB_TOKEN}
 
-# dependency for slapandbury
+# dependencies
+
+# SetCollisionGroup for
+#  slapandbury
+# the include directory for this is, uhm... it has an extra s. I should probably pr this?
 dependency github ashort96/SetCollisionGroup master-SNAPSHOT
+move spcache/addons/sourcemod/scripting/includes : spcache/addons/sourcemod/scripting/include
 
 spcomp -O2 autoready.sp
 spcomp -O2 slapandbury.sp
