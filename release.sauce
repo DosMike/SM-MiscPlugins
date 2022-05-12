@@ -1,5 +1,10 @@
 sourcemod 1.10
 
+auth github %{GITHUB_TOKEN}
+
+# dependency for slapandbury
+dependency github ashort96/SetCollisionGroup master-SNAPSHOT
+
 spcomp -O2 autoready.sp
 spcomp -O2 slapandbury.sp
 
@@ -8,7 +13,6 @@ with files
  slapandbury.smx
 :release zip Compiled.zip auto
 
-auth github %{GITHUB_TOKEN}
 with files
  Compiled.zip
 :release github ${GITHUB_REPOSITORY} ${GITHUB_REF_NAME}

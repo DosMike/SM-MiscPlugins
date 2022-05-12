@@ -12,4 +12,4 @@ jobs:
           distribution: 'temurin'
           java-version: '8'
       - name: SPSauce
-        run: ./sps release.sauce --GITHUB_TOKEN ${{secrets.GITHUB_TOKEN}} --stacktrace
+        run: ./sps release.sauce --GITHUB_TOKEN ${{secrets.GITHUB_TOKEN}}
