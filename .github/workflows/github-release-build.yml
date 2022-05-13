@@ -7,6 +7,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: SPSauce Build
-        uses: DosMike/SPSauce-GHAction@v1.0-alpha.1
+        uses: DosMike/SPSauce-GHAction@v1.0-alpha.2
         with:
           args: release.sauce --GITHUB_TOKEN ${{secrets.GITHUB_TOKEN}}
