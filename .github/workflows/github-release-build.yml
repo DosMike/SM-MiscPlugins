@@ -4,6 +4,7 @@ on:
     types: [published]
 jobs:
   pack-plugin:
+    runs-on: ubuntu-latest
     steps:
       - name: SPSauce Build
         uses: DosMike/SPSauce-GHAction@v1.0-alpha.1
