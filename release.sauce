@@ -10,13 +10,17 @@ auth github %{GITHUB_TOKEN}
 dependency github ashort96/SetCollisionGroup master-SNAPSHOT
 move spcache/addons/sourcemod/scripting/includes : spcache/addons/sourcemod/scripting/include
 
+# build
+
 spcomp -O2 autoready.sp
 spcomp -O2 slapandbury.sp
+
+# pack and push zip
 
 with files
  autoready.smx
  slapandbury.smx
-:release zip Compiled.zip auto
+:release zip Compiled.zip
 
 with files
  Compiled.zip
