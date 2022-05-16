@@ -14,12 +14,14 @@ move spcache/addons/sourcemod/scripting/includes : spcache/addons/sourcemod/scri
 
 spcomp -O2 autoready.sp
 spcomp -O2 slapandbury.sp
+spcomp -O2 tdm_tickets.sp
 
 # pack and push zip
 
 with files
  autoready.smx
  slapandbury.smx
+ tdm_tickets.smx
 :release zip Compiled.zip
 
 with files
