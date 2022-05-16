@@ -16,3 +16,12 @@ ConVars are the same to allow for drop in replacement:
 `mvm_autoready_percent` - the ratio of players (0.0 .. 1.0) that have to ready to force start the round    
 Admin Command:    
 `sm_forceallready` - force all players into the ready state, starting the round. Requires the cheat admin flag.
+
+## TDM Tickets
+A small plugin for TF2 servers that implements a battlefield like ticket system for team deathmatch.
+It abuses mp_tournament mode to display tickets as team names *without* actually displaying any team ready popups during WFP.
+Expect things to break if you have any other plugins that use tournament mode in any way.
+For those that are not familiar: Spawning with this plugin requires a ticket, and once your team runs out of tickets, you loose the round.
+
+There is really only one ConVar:
+`sm_tdm_tickets` - set the amount of tickets each team has.
