@@ -25,3 +25,27 @@ For those that are not familiar: Spawning with this plugin requires a ticket, an
 
 There is really only one ConVar:
 `sm_tdm_tickets` - set the amount of tickets each team has.
+
+## Map Props
+Allows server mods to spawn and manipulate and save props using an array of commands.
+
+In order for props to save, add this block to your databases.cfg
+```
+	"MapProps"
+	{
+		"driver" "sqlite"
+		"database" "mapprops"
+	}
+```
+
+Commands are as follows:
+* sm_spawnprop <model> - spawns a static model
+* sm_spawnphys <model> - spawns a physics model
+* sm_deleteprop [ref] - deletes the ref or aimed prop
+* sm_freezeprop [ref] - freezes the ref or aimed physics prop
+* sm_unfreezeprop [ref] - unfreezes the ref or aimed physics prop
+* sm_saveprop [ref] - add or update prop in database
+* sm_removeprop [ref] - remove prop from database
+* sm_propowner [ref] - shows who spawned the ref or aimed prop, if spawned with sm_spawn*
+* sm_propmodel [ref] - returns the model path for the ref or aimed prop
+* sm_colorprop <r> <g> <b> [a] - colors a prop. r, g, b go from 0 to 255, a is optional with a min of 50
