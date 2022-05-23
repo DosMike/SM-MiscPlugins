@@ -4,7 +4,7 @@
 #include <tf2>
 #include <tf2_stocks>
 
-#define PLUGIN_VERSION "22w18c"
+#define PLUGIN_VERSION "22w21a"
 
 public Plugin myinfo = {
 	name = "[TF2] Auto-Ready",
@@ -19,6 +19,9 @@ float g_minRatio;
 
 //set from ForceAllReady to prevent unnecessary handling of calls
 bool g_ignoreReadyCommand;
+
+int g_clientSpamScore[MAXPLAYERS+1];
+bool g_clientSpamBlocked[MAXPLAYERS+1];
 
 public void OnPluginStart() {
 	//hey, version convar
@@ -45,6 +48,8 @@ public void OnPluginStart() {
 	HookEvent("teamplay_round_start", OnNextWave);
 	HookEvent("mvm_wave_complete", OnNextWave);
 	HookEvent("mvm_wave_failed", OnNextWave);
+	//prevent spamming
+	CreateTimer(1.0, Timer_ClientSpam, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 public void ConVar_OnVersionChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
 	if (!StrEqual(newValue, PLUGIN_VERSION)) {
@@ -60,7 +65,17 @@ public void ConVar_OnMinRatioChanged(ConVar convar, const char[] oldValue, const
 
 public void OnNextWave(Event event, const char[] name, bool dontBroadcast) {
 	g_ignoreReadyCommand = false;
+	for (int client=0; client<=MAXPLAYERS+1; client+=1) {
+		g_clientSpamScore[client]=0;
+		g_clientSpamBlocked[client]=false;
+	}
 }
+
+public void OnClientDisconnect(int client) {
+	g_clientSpamScore[client]=0;
+	g_clientSpamBlocked[client]=false;
+}
+
 
 // auto ready logic
 
@@ -92,6 +107,17 @@ public Action Command_PlayerReadystate(int client, const char[] command, int arg
 	//count ready players
 	int readyCount, playerCount;
 	readyCount = GetReadyCount(playerCount);
+	// spam protection, lock them into ready if they spam
+	if (g_clientSpamBlocked[client]) {
+		ReplyToCommand(client, "\x01[\x07E7B2FFAutoReady\x01] \x07646464Please don't spam the ready toggle");
+		return Plugin_Handled;
+	} else if ((g_clientSpamScore[client]+=5) > 10 && !isReady) {
+		//trying to toggle off
+		ReplyToCommand(client, "\x01[\x07E7B2FFAutoReady\x01] \x07646464Please don't spam the ready toggle");
+		g_clientSpamScore[client]=15;
+		g_clientSpamBlocked[client]=true;
+		return Plugin_Handled;
+	}
 	// "predict" value, again we listen before the actual command function
 	if (isReady) {
 		readyCount += 1;
@@ -130,6 +156,19 @@ public Action Command_ReadyAll(int client, int args) {
 		ForceAllReady();
 	}
 	return Plugin_Handled;
+}
+
+public Action Timer_ClientSpam(Handle timer) {
+	for (int client=0; client<=MAXPLAYERS+1; client+=1) {
+		if (g_clientSpamScore[client]>0) {
+			//decay time and check if it hits 0
+			if ((g_clientSpamScore[client]-=1)==0) {
+				//if so, reset the blocked flag
+				g_clientSpamBlocked[client]=false;
+			}
+		}
+	}
+	return Plugin_Continue;
 }
 
 
