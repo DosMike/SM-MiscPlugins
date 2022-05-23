@@ -4,15 +4,10 @@
 
 #include <smlib>
 
-// slightly incompatible with smlib/entities::Entity_SetCollisionGroup
-// #include <SetCollisionGroup>
-// so declare the native here useing the smlib enum
-native int SetEntityCollisionGroup(int entity, Collision_Group_t group);
-
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w20a"
+#define PLUGIN_VERSION "22w21b"
 
 public Plugin myinfo = {
 	name = "MapProps",
@@ -379,8 +374,9 @@ Action Command_ColorProp(int client, int args) {
 
 void SQL_OnConnected(Database db, const char[] error, any data) {
 	if (db == null) {
-		if (error[0]) SetFailState("Could not connect to presistend MapProp database: %s", error);
-		else SetFailState("Could not connect to presistend MapProp database: Unknown Error");
+		if (error[0]) LogError("Could not connect to presistend MapProp database: %s", error);
+		else LogError("Could not connect to presistend MapProp database: Unknown Error");
+		return;
 	}
 	g_db = db;
 	g_dbConnected = true;
@@ -390,9 +386,9 @@ void SQL_OnConnected(Database db, const char[] error, any data) {
 }
 
 static void LoadProps(bool reload=true) {
-	if (g_currentMapName[0]==0 || !g_dbConnected) return; //needs to be called by maps start and sql_onconnected
+	if (g_currentMapName[0]==0) return; //needs to be called by maps start and sql_onconnected
 
-	if (g_mapProps.Length == 0 && !reload) {
+	if (g_dbConnected && g_mapProps.Length == 0 && !reload) {
 		char query[1024];
 		g_db.Format(query, sizeof(query), "SELECT model,owner,posx,posy,posz,pitch,yaw,roll,color FROM mapprops WHERE map='%s'", g_currentMapName);
 		g_db.Query(SQL_OnPropsLoad, query);
@@ -537,7 +533,7 @@ int FindCommandTargetEntity(int client, bool onlyPhysics=false, bool cursorOnly=
 	if (GetCmdArgs() == 0 || cursorOnly) {
 		entity = GetClientViewTarget(client);
 		if (entity == INVALID_ENT_REFERENCE) {
-			ReplyToCommand(client, "[SM] Usage: sm_deleteprop [ref] - delete a prop under the cursor or with the given ref");
+			ReplyToCommand(client, "[SM] Could not find a valid prop at your cursor");
 			return INVALID_ENT_REFERENCE;
 		}
 	} else {
@@ -563,17 +559,17 @@ int FindCommandTargetEntity(int client, bool onlyPhysics=false, bool cursorOnly=
 	return entity;
 }
 
-int ColorToHex(const int rgba[4], char[] hex, int maxsize) {
-	return Format(hex, maxsize, "%08X", ColorToInt(rgba));
-}
-int HexToColor(const char[] hex, int rgba[4]) {
-	int l=strlen(hex),c;
-	if (l != StringToIntEx(hex,c,16)) return 0;
-	if (l == 6) c = (c<<8)|255;
-	else if (l != 8) return 0;
-	IntToColor(c,rgba);
-	return l;
-}
+// int ColorToHex(const int rgba[4], char[] hex, int maxsize) {
+// 	return Format(hex, maxsize, "%08X", ColorToInt(rgba));
+// }
+// int HexToColor(const char[] hex, int rgba[4]) {
+// 	int l=strlen(hex),c;
+// 	if (l != StringToIntEx(hex,c,16)) return 0;
+// 	if (l == 6) c = (c<<8)|255;
+// 	else if (l != 8) return 0;
+// 	IntToColor(c,rgba);
+// 	return l;
+// }
 int ColorToInt(const int rgba[4]) {
 	return ((rgba[0]&255)<<24)|((rgba[1]&255)<<16)|((rgba[2]&255)<<8)|(rgba[3]&255);
 }
