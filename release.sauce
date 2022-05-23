@@ -9,12 +9,15 @@ auth github %{GITHUB_TOKEN}
 # the include directory for this is, uhm... it has an extra s. I should probably pr this?
 dependency github ashort96/SetCollisionGroup master-SNAPSHOT
 move spcache/addons/sourcemod/scripting/includes : spcache/addons/sourcemod/scripting/include
+# lots of features :)
+dependency github bcserv/smlib transitional_syntax-SNAPSHOT
 
 # build
 
 spcomp -O2 autoready.sp
 spcomp -O2 slapandbury.sp
 spcomp -O2 tdm_tickets.sp
+spcomp -O2 mapprops.sp
 
 # pack and push zip
 
@@ -22,6 +25,7 @@ with files
  autoready.smx
  slapandbury.smx
  tdm_tickets.smx
+ mapprops.smx
 :release zip Compiled.zip
 
 with files
