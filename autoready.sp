@@ -65,7 +65,7 @@ public void ConVar_OnMinRatioChanged(ConVar convar, const char[] oldValue, const
 
 public void OnNextWave(Event event, const char[] name, bool dontBroadcast) {
 	g_ignoreReadyCommand = false;
-	for (int client=0; client<=MAXPLAYERS+1; client+=1) {
+	for (int client=0; client<=MAXPLAYERS; client+=1) {
 		g_clientSpamScore[client]=0;
 		g_clientSpamBlocked[client]=false;
 	}
@@ -159,7 +159,7 @@ public Action Command_ReadyAll(int client, int args) {
 }
 
 public Action Timer_ClientSpam(Handle timer) {
-	for (int client=0; client<=MAXPLAYERS+1; client+=1) {
+	for (int client=0; client<=MAXPLAYERS; client+=1) {
 		if (g_clientSpamScore[client]>0) {
 			//decay time and check if it hits 0
 			if ((g_clientSpamScore[client]-=1)==0) {
