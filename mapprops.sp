@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w21b"
+#define PLUGIN_VERSION "22w21c"
 
 public Plugin myinfo = {
 	name = "MapProps",
@@ -156,16 +156,12 @@ enum struct LocalPropData {
 }
 
 public void OnPluginStart() {
-	if (!(g_dbConnected = (g_db!=null))) {
-		Database.Connect(SQL_OnConnected, "MapProps");
-	}
-	if (g_mapProps==null) g_mapProps = new ArrayList(sizeof(LocalPropData));
-	else g_mapProps.Clear();
-	g_currentMapName[0]=0;
-
+	LoadTranslations("common.phrases");
+	
 	RegAdminCmd("sm_spawnprop", Command_SpawnProp, PERM_MOD, "<modelpath> - Spawns a prop with the given model in front of you");
 	RegAdminCmd("sm_spawnphys", Command_SpawnProp, PERM_MOD, "<modelpath> - Spawns a prop with the given model in front of you");
 	RegAdminCmd("sm_deleteprop", Command_DeleteProp, PERM_MOD, "[entRef] - Deletes the prop looking at");
+	RegAdminCmd("sm_deletepropsby", Command_DeleteProp2, PERM_MOD, "<SteamID2|UserID|Target> - Deletes all props by the specified owner");
 	RegAdminCmd("sm_freezeprop", Command_FreezeProp, PERM_MOD, "Freezes the prop looking at");
 	RegAdminCmd("sm_unfreezeprop", Command_UnfreezeProp, PERM_MOD, "Unfreezes the prop looking at");
 	if (SQL_CheckConfig("MapProps")) {
@@ -189,6 +185,12 @@ public void OnPluginStart() {
 }
 
 public void OnMapStart() {
+	if (!(g_dbConnected = (g_db!=null))) {
+		Database.Connect(SQL_OnConnected, "MapProps");
+	}
+	if (g_mapProps==null) g_mapProps = new ArrayList(sizeof(LocalPropData));
+	else g_mapProps.Clear();
+	
 	GetCurrentMap(g_currentMapName, sizeof(g_currentMapName));
 	LoadProps(false);
 }
@@ -244,6 +246,48 @@ Action Command_DeleteProp(int client, int args) {
 	int ref = EntIndexToEntRef(entity);// for printing
 	RemoveEdict(entity);
 	ReplyToCommand(client, "[SM] Deleted prop ref %08X", ref);
+	return Plugin_Handled;
+}
+
+Action Command_DeleteProp2(int client, int args) {
+	if (args == 0) {
+		ReplyToCommand(client, "[SM] Usage: /deletepropby <SteamID2|UserID|Target>");
+		return Plugin_Handled;
+	}
+	int deleted;
+	char buffer[128];
+	GetCmdArgString(buffer, sizeof(buffer));
+	if (StrContains(buffer, "steam_", false)==0) {
+		//this loop is an ascii StrToUpper, because steam2 ids should be caps prefixed (STEAM_)
+		for (int i=strlen(buffer)-1; i>=0; i-=1) {
+			if ('a'<=buffer[i]<='z') buffer[i] &=~ ' ';
+		}
+		deleted = DeleteAllPropsBySteamId(buffer);
+		int target = GetClientBySteamId(buffer);
+		if (target)
+			ReplyToCommand(client, "[SM] Deleted %i props for %N (%s)...", deleted, target, buffer);
+		else
+			ReplyToCommand(client, "[SM] Deleted %i props for SteamID '%s'...", deleted, buffer);
+	} else {
+		int targets[MAXPLAYERS];
+		bool tn_is_ml;
+		char tname[64];
+		int result = ProcessTargetString(buffer, client, targets, MAXPLAYERS, COMMAND_FILTER_NO_IMMUNITY|COMMAND_FILTER_NO_BOTS, tname, sizeof(tname), tn_is_ml);
+		if (result <= 0) {
+			ReplyToTargetError(client, result);
+			return Plugin_Handled;
+		}
+		for (int i=0; i<result; i+=1) {
+			if (!GetClientAuthId(targets[i], AuthId_Steam2, buffer, sizeof(buffer)))
+				continue;
+			deleted += DeleteAllPropsBySteamId(buffer);
+		}
+		if (tn_is_ml) {
+			ReplyToCommand(client, "[SM] Deleted %i props for %t...", deleted, tname);
+		} else {
+			ReplyToCommand(client, "[SM] Deleted %i props for %s...", deleted, tname);
+		}
+	}
 	return Plugin_Handled;
 }
 
@@ -586,4 +630,21 @@ int GetClientBySteamId(const char[] steamId) {
 		if (StrEqual(g_clientSteamId[client], steamId)) return client;
 	}
 	return 0;
+}
+
+int DeleteAllPropsBySteamId(const char[] steamid) {
+	int deleted;
+	LocalPropData local;
+	for (int p=g_mapProps.Length-1; p>=0; p-=1) {
+		g_mapProps.GetArray(p, local);
+		if (!StrEqual(local.owner, steamid))
+			continue;
+		local.DropAsync();
+		g_mapProps.Erase(p);
+		int entity = EntRefToEntIndex(local.entref);
+		if (entity != INVALID_ENT_REFERENCE)
+			RemoveEdict(entity);
+		deleted += 1;
+	}
+	return deleted;
 }
