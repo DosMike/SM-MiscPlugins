@@ -17,13 +17,14 @@ public Plugin myinfo = {
 	url = "N/A"
 };
 
-#define PERM_MOD ADMFLAG_CONFIG
+#define PERM_MOD ADMFLAG_GENERIC
 
 char g_clientSteamId[MAXPLAYERS+1][64];
 char g_currentMapName[128];
 ArrayList g_mapProps;
 Database g_db = null;
 bool g_dbConnected;
+int g_iEdictBuffer;
 
 enum struct LocalPropData {
 	char model[PLATFORM_MAX_PATH];
@@ -172,6 +173,12 @@ public void OnPluginStart() {
 	RegAdminCmd("sm_propmodel", Command_PropModel, PERM_MOD, "Gets model path of prop looking at");
 	RegAdminCmd("sm_colorprop", Command_ColorProp, PERM_MOD, "<r=0..255> <g=0..255> <b=0..255> [a=50..255] - Change prop color");
 
+	ConVar convar = FindConVar("sv_lowedict_threshold");
+	if (convar != null) {
+		g_iEdictBuffer = convar.IntValue;
+		convar.AddChangeHook(OnLowedictThresholdChanged);
+	}
+
 	//hook this event as this nukes props
 	HookEvent("teamplay_round_start", OnRoundStart);
 
@@ -217,6 +224,13 @@ public void OnClientAuthorized(int client, const char[] auth) {
 public void OnClientDisconnect(int client) {
 	g_clientSteamId[client][0]=0;
 }
+
+//#region ConVars
+public void OnLowedictThresholdChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
+	g_iEdictBuffer = convar.IntValue;
+}
+
+//#endregion
 
 //#region Commands
 
@@ -482,7 +496,7 @@ public void __SQL_FastCB(Database db, DBResultSet results, const char[] error, a
 
 int SpawnPropAt(const char[] model, float origin[3], float angles[3], int skin=0, bool physics=false, Collision_Group_t collisionGroup=COLLISION_GROUP_NONE, int takeDamage=DAMAGE_EVENTS_ONLY) {
 	//simple edict protection
-	if (GetEntityCount()>=1980) return INVALID_ENT_REFERENCE;
+	if (!CheckEdictLimit()) return INVALID_ENT_REFERENCE;
 	
 	int entity;
 	if(strlen(model)==0 || !FileExists(model, true) || (entity = CreateEntityByName(physics?"prop_physics_override":"prop_dynamic_override")) == INVALID_ENT_REFERENCE) 
@@ -647,4 +661,15 @@ int DeleteAllPropsBySteamId(const char[] steamid) {
 		deleted += 1;
 	}
 	return deleted;
+}
+
+bool CheckEdictLimit() {
+	//calculate the base headroom
+	int space = GetMaxEntities() - GetEntityCount();
+	//we probably want to spawn one and keep some extra buffer, 
+	// and we don't want to run into the lowedict action
+	// so subtract some small value
+	space -= ( g_iEdictBuffer + 12 );
+	PrintToServer("Edict headroom: %i", space);
+	return space > 0;
 }
