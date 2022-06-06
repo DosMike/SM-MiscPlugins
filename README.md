@@ -38,7 +38,7 @@ In order for props to save, add this block to your databases.cfg
 	}
 ```
 
-Commands are as follows:
+Commands are as follows (These have the permission ADMFLAG_GENERIC):
 * sm_spawnprop &lt;model> - spawns a static model
 * sm_spawnphys &lt;model> - spawns a physics model
 * sm_deleteprop [ref] - deletes the ref or aimed prop
@@ -49,3 +49,13 @@ Commands are as follows:
 * sm_propowner [ref] - shows who spawned the ref or aimed prop, if spawned with sm_spawn*
 * sm_propmodel [ref] - returns the model path for the ref or aimed prop
 * sm_colorprop &lt;r> &lt;g> &lt;b> [a] - colors a prop. r, g, b go from 0 to 255, a is optional with a min of 50
+
+## QuickTrack
+Allows servermods to quickly set up race tracks around maps with checkpoints, similar to bhop/surf timers.
+The setup is done entirely through VGUI menus and player positioning.
+Checkpoints within a track have to be visited in sequence for the attempt to progress, best times get a shoutout.
+
+Commands:
+* sm_edittrack &lt;track> - Open the track editor for the track (ADMFLAG_GENERIC)
+* sm_tracktop [track] - Open the top-scores for the current track, or the specified track
+* sm_stoptrack - End the track a player is currently on

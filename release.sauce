@@ -18,6 +18,7 @@ spcomp -O2 autoready.sp
 spcomp -O2 slapandbury.sp
 spcomp -O2 tdm_tickets.sp
 spcomp -O2 mapprops.sp
+spcomp -O2 quicktracks.sp
 
 # pack and push zip
 
@@ -26,6 +27,7 @@ with files
  slapandbury.smx
  tdm_tickets.smx
  mapprops.smx
+ quicktracks.smx
 :release zip Compiled.zip
 
 with files
