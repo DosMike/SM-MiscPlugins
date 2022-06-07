@@ -150,6 +150,32 @@ int Track_IsInEditor(int track) {
 	}
 	return 0;
 }
+void Track_StartEditFrame(DataPack pack) {
+	//unpack args and retry, in case a menu was open
+	pack.Reset();
+	int client = GetClientOfUserId(pack.ReadCell());
+	int track = pack.ReadCell();
+	delete pack;
+	if (!client || track >= g_Tracks.Length || track < 0) return;
+	Track_StartEdit(client,track);
+}
+void Track_StartEdit(int client, int track) {
+	if (clientEditorState[client] != EDIT_NONE || clientTrackEditIndex[client] != INVALID_TRACK) {
+		//the editor is still open
+		//cancelling the menu will clear some values, we dont want that in this case
+		CancelClientMenu(client);
+		//collect args to retry later
+		DataPack pack = new DataPack();
+		pack.WriteCell(GetClientUserId(client));
+		pack.WriteCell(track);
+		RequestFrame(Track_StartEditFrame, pack);
+	} else {
+		clientEditorState[client] = EDIT_TRACK;
+		clientTrackEditIndex[client] = track;
+		clientZoneEditIndex[client] = ZONE_EDITNONE;
+		ShowEditTrackMenu(client);
+	}
+}
 
 #define SELF clientAttempts[client]
 int Attempt_GetClientZone(int client) {
@@ -374,15 +400,14 @@ public Action Command_MakeTrack(int client, int args) {
 	}
 	char givenname[64];
 	GetCmdArgString(givenname, sizeof(givenname));
-	if ((clientTrackEditIndex[client] = Track_FindByName(givenname))==INVALID_TRACK) {
+	int trackid = Track_FindByName(givenname);
+	if (trackid == INVALID_TRACK) {
 		Track track;
 		track.Reinit(INVALID_TRACK);
 		strcopy(track.name, sizeof(Track::name), givenname);
-		clientTrackEditIndex[client] = g_Tracks.PushArray(track);
+		trackid = g_Tracks.PushArray(track);
 	}
-	clientEditorState[client] = EDIT_TRACK;
-	clientZoneEditIndex[client] = ZONE_EDITNONE;
-	ShowEditTrackMenu(client);
+	Track_StartEdit(client, trackid);
 	return Plugin_Handled;
 }
 
@@ -414,7 +439,7 @@ public Action Command_TrackTop(int client, int args) {
 	Track track;
 	track.FetchSelf(trackid);
 	Menu menu = CreateMenu(HandleTrackTopMenu);
-	menu.SetTitle("Top times for track\n%s",track.name);
+	menu.SetTitle("Top times for track\n%s\n ",track.name);
 	int at=-1;
 	ScoreData score;
 	int rank=1;
@@ -426,10 +451,14 @@ public Action Command_TrackTop(int client, int args) {
 		char buffer[64];
 		g_authNames.GetString(score.steamid, buffer, sizeof(buffer));
 		Format(buffer, sizeof(buffer), "#%i %s [%.2fs]", rank++, buffer, score.time);
-		menu.AddItem("", buffer);
+		menu.AddItem("", buffer, ITEMDRAW_DISABLED);
+	}
+	if (rank == 1) {
+		//still wants to fill first place, so no scores
+		menu.AddItem("", "No times yet", ITEMDRAW_DISABLED);
 	}
 	
-	menu.Display(client, MENU_TIME_FOREVER);
+	menu.Display(client, 60);
 	return Plugin_Handled;
 }
 
