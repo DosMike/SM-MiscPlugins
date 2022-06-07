@@ -296,17 +296,13 @@ public void OnPluginStart() {
 	g_Tracks = new ArrayList(sizeof(Track));
 	g_authNames = new StringMap();
 	g_TrackScores = new ArrayList(sizeof(ScoreData));
+	
 	RegAdminCmd("sm_edittrack", Command_MakeTrack, ADMFLAG_GENERIC, "Usage: <TrackName> - Create or edit a track", "quicktracks");
 	RegConsoleCmd("sm_stoptrack", Command_StopTrack, "Stop a track without finishing it");
 	RegConsoleCmd("sm_tracktop", Command_TrackTop, "Usage: [TrackName] - Display top times for the track you're in or the named track");
 	AddCommandListener(Command_TeamSay, "say_team");
-	HookEvent("player_changename", OnPlayerChangeName);
 	
-	for (int i=1;i<=3;i++) {
-		char soundFile[128];
-		Format(soundFile, sizeof(soundFile), "ambient_mp3/bumper_car_cheer%i.mp3", i);
-		PrecacheSound(soundFile, true);
-	}
+	HookEvent("player_changename", OnPlayerChangeName);
 	
 	for (int client=1; client<=MaxClients; client++) {
 		if (IsClientConnected(client)) {
@@ -320,6 +316,11 @@ public void OnPluginStart() {
 
 public void OnMapStart() {
 	g_iLaserBeam = PrecacheModel("materials/sprites/laserbeam.vmt", true);
+	for (int i=1;i<=3;i++) {
+		char soundFile[128];
+		Format(soundFile, sizeof(soundFile), "ambient_mp3/bumper_car_cheer%i.mp3", i);
+		PrecacheSound(soundFile, true);
+	}
 	CreateTimer(1.0, Timer_DrawZones, _, TIMER_FLAG_NO_MAPCHANGE|TIMER_REPEAT);
 }
 
