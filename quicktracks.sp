@@ -4,7 +4,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w23a"
+#define PLUGIN_VERSION "22w23b"
 
 public Plugin myinfo = {
 	name = "Quick Tracks",
@@ -84,7 +84,7 @@ char clientSteamIds[MAXPLAYERS+1][48];
 
 int g_iLaserBeam;
 
-ArrayList g_trackScores;
+ArrayList g_TrackScores;
 
 enum struct Track {
 	char name[64];
@@ -228,15 +228,15 @@ void _OnClientAdvanceTrack(int client, int zone, int zoneCount) {
 }
 
 int ScoreGetTrackTop(int track, int start=-1) {
-	for (int i=start+1; i<g_trackScores.Length; i+=1) {
-		if (g_trackScores.Get(i, ScoreData::track) == track)
+	for (int i=start+1; i<g_TrackScores.Length; i+=1) {
+		if (g_TrackScores.Get(i, ScoreData::track) == track)
 			return i;
 	}
 	return -1;
 }
 int ScoreGetInsertIndex(float time, int start=-1) {
-	for (int i=start+1; i<g_trackScores.Length; i+=1) {
-		if (view_as<float>(g_trackScores.Get(i, ScoreData::time)) > time)
+	for (int i=start+1; i<g_TrackScores.Length; i+=1) {
+		if (view_as<float>(g_TrackScores.Get(i, ScoreData::time)) > time)
 			return i;
 	}
 	return -1;
@@ -267,17 +267,17 @@ void _OnClientTrackFinish(int client) {
 	bool insert;
 	if (results >= MAX_TRACK_SCORES && insertAt >= 0 && insertAt <= search) {
 		//this score will push an old one out the bottom
-		g_trackScores.Erase(search);
+		g_TrackScores.Erase(search);
 		insert = true;
 	} else if (results < MAX_TRACK_SCORES) {
 		insert = true;
 	}
 	if (insert) {
-		if (insertAt >= 0 && insertAt < g_trackScores.Length) {
-			g_trackScores.ShiftUp(insertAt);
-			g_trackScores.SetArray(insertAt, score);
+		if (insertAt >= 0 && insertAt < g_TrackScores.Length) {
+			g_TrackScores.ShiftUp(insertAt);
+			g_TrackScores.SetArray(insertAt, score);
 		} else {
-			insertAt = g_trackScores.PushArray(score);
+			insertAt = g_TrackScores.PushArray(score);
 		}
 	}
 	if (firstIndex == -1 || (insertAt >= 0 && insertAt <= firstIndex)) {
@@ -295,7 +295,7 @@ void _OnClientTrackFinish(int client) {
 public void OnPluginStart() {
 	g_Tracks = new ArrayList(sizeof(Track));
 	g_authNames = new StringMap();
-	g_trackScores = new ArrayList(sizeof(ScoreData));
+	g_TrackScores = new ArrayList(sizeof(ScoreData));
 	RegAdminCmd("sm_edittrack", Command_MakeTrack, ADMFLAG_GENERIC, "Usage: <TrackName> - Create or edit a track", "quicktracks");
 	RegConsoleCmd("sm_stoptrack", Command_StopTrack, "Stop a track without finishing it");
 	RegConsoleCmd("sm_tracktop", Command_TrackTop, "Usage: [TrackName] - Display top times for the track you're in or the named track");
@@ -324,13 +324,17 @@ public void OnMapStart() {
 }
 
 public void OnMapEnd() {
+	//stop attempts
 	for (int i=1; i<=MaxClients; i+=1) {
 		Attempt_Stop(i);
 	}
+	//every track has a handle for the tracks zones, free those!
 	for (int i=g_Tracks.Length-1; i>=0; i-=1) {
 		delete view_as<ArrayList>(g_Tracks.Get(i,Track::zones));
-		g_Tracks.Erase(i);
 	}
+	//reset tracks an scores
+	g_Tracks.Clear();
+	g_TrackScores.Clear();
 }
 
 public void OnPlayerChangeName(Event event, const char[] name, bool dontBroadcast) {
@@ -369,24 +373,15 @@ public Action Command_MakeTrack(int client, int args) {
 	}
 	char givenname[64];
 	GetCmdArgString(givenname, sizeof(givenname));
-	if (clientEditorState[client] == EDIT_NONE) {
-		if ((clientTrackEditIndex[client] = Track_FindByName(givenname))==INVALID_TRACK) {
-			Track track;
-			track.Reinit(INVALID_TRACK);
-			strcopy(track.name, sizeof(Track::name), givenname);
-			clientTrackEditIndex[client] = g_Tracks.PushArray(track);
-		}
-		clientEditorState[client] = EDIT_TRACK;
-		ShowEditTrackMenu(client);
-	} else if (clientEditorState[client] == EDIT_TRACK) {
+	if ((clientTrackEditIndex[client] = Track_FindByName(givenname))==INVALID_TRACK) {
 		Track track;
-		g_Tracks.GetArray(clientTrackEditIndex[client], track);
-		ReplyToCommand(client, "[QT] You're currently editing the track '%s'!", track.name);
-		ShowEditTrackMenu(client);
-	} else if (clientEditorState[client] == EDIT_ZONE) {
-		ReplyToCommand(client, "[QT] You're currently editing a zone!");
-		ShowEditZoneMenu(client);
+		track.Reinit(INVALID_TRACK);
+		strcopy(track.name, sizeof(Track::name), givenname);
+		clientTrackEditIndex[client] = g_Tracks.PushArray(track);
 	}
+	clientEditorState[client] = EDIT_TRACK;
+	clientZoneEditIndex[client] = ZONE_EDITNONE;
+	ShowEditTrackMenu(client);
 	return Plugin_Handled;
 }
 
@@ -426,7 +421,7 @@ public Action Command_TrackTop(int client, int args) {
 		at = ScoreGetTrackTop(trackid, at);
 		if (at < 0) break;
 		
-		g_trackScores.GetArray(at, score);
+		g_TrackScores.GetArray(at, score);
 		char buffer[64];
 		g_authNames.GetString(score.steamid, buffer, sizeof(buffer));
 		Format(buffer, sizeof(buffer), "#%i %s [%.2fs]", rank++, buffer, score.time);
@@ -436,13 +431,12 @@ public Action Command_TrackTop(int client, int args) {
 	menu.Display(client, MENU_TIME_FOREVER);
 	return Plugin_Handled;
 }
+
 public int HandleTrackTopMenu(Menu menu, MenuAction action, int param1, int param2) {
 	if (action == MenuAction_End) {
 		delete menu;
 	}
 }
-
-
 
 public Action Command_TeamSay(int client, const char[] command, int argc) {
 	//hijack team say if we are in the pick-zone state
@@ -517,18 +511,18 @@ public int HandleEditTrackMenu(Menu menu, MenuAction action, int param1, int par
 			ShowEditZoneMenu(param1);
 		} else if (StrEqual(info, "reset")) {
 			//delete scores for track
-			for (int i=g_trackScores.Length-1; i>=0; i-=1) {
-				if (g_trackScores.Get(i, ScoreData::track) == clientTrackEditIndex[param1]) {
-					g_trackScores.Erase(i);
+			for (int i=g_TrackScores.Length-1; i>=0; i-=1) {
+				if (g_TrackScores.Get(i, ScoreData::track) == clientTrackEditIndex[param1]) {
+					g_TrackScores.Erase(i);
 				}
 			}
 			PrintToChat(param1, "[QT] Scores for this track were cleared");
 			ShowEditTrackMenu(param1);
 		} else if (StrEqual(info, "delete")) {
 			//delete scores for this track
-			for (int i=g_trackScores.Length-1; i>=0; i-=1) {
-				if (g_trackScores.Get(i, ScoreData::track) == clientTrackEditIndex[param1]) {
-					g_trackScores.Erase(i);
+			for (int i=g_TrackScores.Length-1; i>=0; i-=1) {
+				if (g_TrackScores.Get(i, ScoreData::track) == clientTrackEditIndex[param1]) {
+					g_TrackScores.Erase(i);
 				}
 			}
 			//delete the track itself
