@@ -1,10 +1,14 @@
 #include <sourcemod>
+#include <sdkhooks>
+#include <sdktools>
 #include <smlib>
+#include <tf2>
+#include <tf2_stocks>
 
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w23b"
+#define PLUGIN_VERSION "22w23c"
 
 public Plugin myinfo = {
 	name = "Quick Tracks",
@@ -21,10 +25,17 @@ public Plugin myinfo = {
 #define EDIT_NONE 0
 #define EDIT_TRACK 1
 #define EDIT_ZONE 2
+#define EDIT_TRACKSUB 3
 
 #define MAX_ZONES_PER_TRACK 64
 //one vgui menu page can hold 7, usual player cap is ~32
 #define MAX_TRACK_SCORES 35
+
+// a timers minimal interval is 0.1 seconds, so playersPerTick/maxPlayerCount should be > 0.1
+// if you have more players (other game), adjust SPLIT_TIMER_FOR_PLAYERS
+// if you come out to more than 1 player/tick, change TIMER_PLAYERS_PER_TICK
+#define SPLIT_TIMER_FOR_PLAYERS 32
+#define TIMER_PLAYERS_PER_TICK 4
 
 float ZERO_VECTOR[3];
 
@@ -57,12 +68,14 @@ enum struct ZoneData {
 
 enum struct Attempt {
 	int track;
+	int lap;
 	int zone;
 	float time;
 	
 	void Init(int track) {
 		this.track = track;
-		this.time=0.0;
+		this.lap = 0;
+		this.time = 0.0;
 		this.zone = (track == INVALID_TRACK) ? ZONE_NOTSTARTED : ZONE_INSTART;
 	}
 }
@@ -90,6 +103,7 @@ enum struct Track {
 	char name[64];
 	ArrayList zones; //list of zonedata
 	bool open;
+	int laps; //0 for linear
 	
 	void Reinit(int selfTrack) {
 		if (selfTrack >= 0 && this.zones != null) this.zones.Clear();
@@ -163,12 +177,19 @@ void Track_StartEdit(int client, int track) {
 	if (clientEditorState[client] != EDIT_NONE || clientTrackEditIndex[client] != INVALID_TRACK) {
 		//the editor is still open
 		//cancelling the menu will clear some values, we dont want that in this case
-		CancelClientMenu(client);
-		//collect args to retry later
-		DataPack pack = new DataPack();
-		pack.WriteCell(GetClientUserId(client));
-		pack.WriteCell(track);
-		RequestFrame(Track_StartEditFrame, pack);
+		if (!CancelClientMenu(client)) {
+			//there was a problem with the menu, reset editor and open
+			clientEditorState[client] = EDIT_TRACK;
+			clientTrackEditIndex[client] = track;
+			clientZoneEditIndex[client] = ZONE_EDITNONE;
+			ShowEditTrackMenu(client);
+		} else {
+			//wait for the menu to process the cancel, collect args to retry later
+			DataPack pack = new DataPack();
+			pack.WriteCell(GetClientUserId(client));
+			pack.WriteCell(track);
+			RequestFrame(Track_StartEditFrame, pack);
+		}
 	} else {
 		clientEditorState[client] = EDIT_TRACK;
 		clientTrackEditIndex[client] = track;
@@ -187,8 +208,8 @@ int Attempt_GetClientZone(int client) {
 	
 	ZoneData zone;
 	if (SELF.zone == ZONE_INSTART && track.zones.GetArray(0,zone) && !zone.IsInside(client)) {
-		//timer is paused in start zone
-		_OnClientAdvanceTrack(client, SELF.zone = 0, track.zones.Length);
+		//timer is paused in start zone, we just left, so go
+		_OnClientAdvanceTrack(client, SELF.zone = 0, track.zones.Length, SELF.lap = (track.laps?1:0), track.laps);
 		return 0;
 	}
 	if (SELF.zone >= 0) {
@@ -197,10 +218,18 @@ int Attempt_GetClientZone(int client) {
 			track.zones.GetArray(i,zone);
 			if (!zone.IsInside(client)) continue;
 			if (i == 0) {
-				//if we are in the start zone, revert to pre-attempt
-				return (SELF.zone = ZONE_INSTART);
-			} if (i == SELF.zone + 1) {
-				_OnClientAdvanceTrack(client, SELF.zone = i, track.zones.Length);
+				if (!track.laps || (SELF.lap <= 1 && SELF.zone < 1)) {
+					//if we are in the start zone, revert to pre-attempt
+					// reset only if linear, or no checkpoint was passed yet
+					return (SELF.zone = ZONE_INSTART);
+				} else if (SELF.zone == track.zones.Length-1) {
+					//previously visited the last zone, now touching the first
+					_OnClientAdvanceTrack(client, SELF.zone = 0, track.zones.Length, SELF.lap += 1, track.laps);
+					if (SELF.zone == ZONE_NOTSTARTED) break; //we just finished
+				}
+			} 
+			if (i == SELF.zone + 1) {
+				_OnClientAdvanceTrack(client, SELF.zone = i, track.zones.Length, SELF.lap, track.laps);
 				return i;
 			}
 		}
@@ -210,6 +239,7 @@ int Attempt_GetClientZone(int client) {
 void Attempt_Stop(int client) {
 	SELF.track = INVALID_TRACK;
 	SELF.zone = ZONE_NOTSTARTED;
+	SELF.lap = 0;
 }
 #undef SELF
 
@@ -239,17 +269,30 @@ void _OnClientStartTrack(int client, int trackIdx) {
 	PrintToChat(client, "[QT] You have started the track \"%s\".\n  Use /stoptrack to cancel.", track.name);
 }
 
-void _OnClientAdvanceTrack(int client, int zone, int zoneCount) {
-//	PrintToChat(client, "Checkpoint %i/%i", zone+1,zoneCount);
-	if (zone == 0) {
-		clientAttempts[client].time = GetClientTime(client);
-		PrintHintText(client, "[QuickTrack] Info\nZone: -/%i\nTime: -.--s", zoneCount-1);
+void _OnClientAdvanceTrack(int client, int zone, int zoneCount, int lap, int lapCount) {
+	//zones start at 0, laps start at 1
+	if (lapCount) {
+		if (zone == 0 && lap == 1) {
+			clientAttempts[client].time = GetClientTime(client);
+			PrintHintText(client, "[QuickTrack] Info\nLap: %i/%i\nZone: -/%i\nTime: -.--s", lap,lapCount, zoneCount-1);
+		} else if (zone == 0 && lap > lapCount) {
+			clientAttempts[client].time = GetClientTime(client) - clientAttempts[client].time;
+			PrintHintText(client, "[QuickTrack] Info\nFINISH\n \nTime: %.2fs", clientAttempts[client].time);
+			_OnClientTrackFinish(client);
+		} else {
+			PrintHintText(client, "[QuickTrack] Info\nLap: %i/%i\nZone: %i/%i\nTime: %.2fs", lap,lapCount, zone,zoneCount-1, GetClientTime(client)-clientAttempts[client].time);
+		}
 	} else {
-		PrintHintText(client, "[QuickTrack] Info\nZone: %i/%i\nTime: %.2fs", zone, zoneCount-1, GetClientTime(client)-clientAttempts[client].time);
-	}
-	if (zone+1 == zoneCount) {
-		clientAttempts[client].time = GetClientTime(client) - clientAttempts[client].time;
-		_OnClientTrackFinish(client);
+		if (zone == 0) {
+			clientAttempts[client].time = GetClientTime(client);
+			PrintHintText(client, "[QuickTrack] Info\nLinear\nZone: -/%i\nTime: -.--s", zoneCount-1);
+		} else if (zone+1 == zoneCount) {
+			clientAttempts[client].time = GetClientTime(client) - clientAttempts[client].time;
+			PrintHintText(client, "[QuickTrack] Info\nFINISH\n \nTime: %.2fs", clientAttempts[client].time);
+			_OnClientTrackFinish(client);
+		} else {
+			PrintHintText(client, "[QuickTrack] Info\nLinear\nZone: %i/%i\nTime: %.2fs", zone,zoneCount-1, GetClientTime(client)-clientAttempts[client].time);
+		}
 	}
 }
 
@@ -267,6 +310,16 @@ int ScoreGetInsertIndex(float time, int start=-1) {
 	}
 	return -1;
 }
+int ScoreGetIndexTrack(int track, int client) {
+	for (int i=0; i<g_TrackScores.Length; i+=1) {
+		ScoreData score;
+		g_TrackScores.GetArray(i,score);
+		if (score.track == track && StrEqual(score.steamid, clientSteamIds[client])) {
+			return i;
+		}
+	}
+	return -1;
+}
 
 void _OnClientTrackFinish(int client) {
 	Track track;
@@ -278,11 +331,17 @@ void _OnClientTrackFinish(int client) {
 	score.track = trackid;
 	strcopy(score.steamid, sizeof(ScoreData::steamid), clientSteamIds[client]);
 	
-	//get top time
+	//get previous time
+	int prevAt = ScoreGetIndexTrack(clientAttempts[client].track, client);
+	float prevTime = prevAt >= 0 ? g_TrackScores.Get(prevAt, ScoreData::time) : -1.0;
+	//   we had no previous pb (within MAX_TRACK_SCORES) or improved
+	bool newPB = prevAt < 0 || score.time < prevTime;
+	if (prevAt >= 0 && newPB) g_TrackScores.Erase(prevAt); //we improved our time, drop the old one
 	int insertAt = ScoreGetInsertIndex(clientAttempts[client].time);
-	int results;
-	int search=-1;
-	int firstIndex=-1;
+	//get top time and num scores
+	int results; //number of scores for this track
+	int search=-1; //will be the last score index after counting (-1 for none yet)
+	int firstIndex=-1; //best score for the track (-1 for none yet)
 	while (results < MAX_TRACK_SCORES) {
 		int at = ScoreGetTrackTop(trackid, search);
 		if (at < 0) break;
@@ -290,30 +349,45 @@ void _OnClientTrackFinish(int client) {
 		results += 1;
 		search = at;
 	}
-	bool insert;
-	if (results >= MAX_TRACK_SCORES && insertAt >= 0 && insertAt <= search) {
-		//this score will push an old one out the bottom
-		g_TrackScores.Erase(search);
-		insert = true;
-	} else if (results < MAX_TRACK_SCORES) {
-		insert = true;
-	}
+	//   no scores yet, or we insert a time ahead of all others
+	bool newWR = firstIndex == -1 || (insertAt >= 0 && insertAt <= firstIndex);
+	//   we have to drop a score, if MAX_TRACK_SCORES are exhausted and we instert our score
+	bool dropLast = results >= MAX_TRACK_SCORES && insertAt >= 0 && insertAt <= search;
+	//   do not insert, if our score would be after the worst score and we have MAX_TRACK_SCORES
+	//   so insert if we have a better score or there's still room for worse scores.
+	//   if we insert post, or no times are yet set, the second clause in the || will pass.
+	//   also, even if there's room for worse scores, we only want to track 1 per player
+	//   so insert only if we dropped the old score (new pb) or didn't have a previous score.
+	bool insert = ((insertAt >= 0 && insertAt <= search) || results < MAX_TRACK_SCORES) && newPB;
+	
+	//actual insert logic
 	if (insert) {
+		if (dropLast) {
+			//this score will push an old one out the bottom (search is last result at this point)
+			g_TrackScores.Erase(search);
+		}
 		if (insertAt >= 0 && insertAt < g_TrackScores.Length) {
+			//we actually insert in the middle
 			g_TrackScores.ShiftUp(insertAt);
 			g_TrackScores.SetArray(insertAt, score);
 		} else {
+			//we append at the end
 			insertAt = g_TrackScores.PushArray(score);
 		}
 	}
-	if (firstIndex == -1 || (insertAt >= 0 && insertAt <= firstIndex)) {
-		PrintToChatAll("\x01\x07c816ff[QT] \x01%N\x07ffc800 got first place in \x01\"%s\" \x07ffc800with \x073298ff%.2fs", client, track.name, clientAttempts[client].time);
+	if (newWR) {
+		PrintToChatAll("\x01\x07c816ff[QT] \x01%N\x07ffc800 got 1st place in \x01\"%s\" \x07ffc800with \x073298ff%.2fs", client, track.name, clientAttempts[client].time);
 		
 		char soundFile[128];
 		Format(soundFile, sizeof(soundFile), "ambient_mp3/bumper_car_cheer%i.mp3", GetRandomInt(1,3));
 		EmitSoundToAll(soundFile);
+	} else if (newPB) {
+		if (prevAt==-1)
+			PrintToChatAll("\x01\x07c816ff[QT] \x01%N\x04 completed \x01\"%s\" \x04in \x05%.2fs", client, track.name, clientAttempts[client].time);
+		else
+			PrintToChatAll("\x01\x07c816ff[QT] \x01%N\x04 completed \x01\"%s\" \x04in \x05%.2fs \x03(%.2fs)", client, track.name, clientAttempts[client].time, clientAttempts[client].time-prevTime);
 	} else {
-		PrintToChatAll("\x01\x07c816ff[QT] \x01%N\x04 completed \x01\"%s\" \x04in \x05%.2fs", client, track.name, clientAttempts[client].time);
+		PrintToChat(client, "\x01\x07c816ff[QT] \x04You completed \x01\"%s\" \x04in \x05%.2fs", track.name, clientAttempts[client].time);
 	}
 	Attempt_Stop(client);
 }
@@ -329,10 +403,15 @@ public void OnPluginStart() {
 	AddCommandListener(Command_TeamSay, "say_team");
 	
 	HookEvent("player_changename", OnPlayerChangeName);
+	HookEvent("player_teleported", OnPlayerTeleported, EventHookMode_Pre);
+	HookEvent("player_death", OnPlayerDeath);
 	
 	for (int client=1; client<=MaxClients; client++) {
 		if (IsClientConnected(client)) {
 			OnClientConnected(client);
+			if (IsClientInGame(client)) {
+				HookClient(client);
+			}
 			if (IsClientAuthorized(client)) {
 				OnClientAuthorized(client, "");
 			}
@@ -347,7 +426,8 @@ public void OnMapStart() {
 		Format(soundFile, sizeof(soundFile), "ambient_mp3/bumper_car_cheer%i.mp3", i);
 		PrecacheSound(soundFile, true);
 	}
-	CreateTimer(1.0, Timer_DrawZones, _, TIMER_FLAG_NO_MAPCHANGE|TIMER_REPEAT);
+	//poke every player once a second
+	CreateTimer(float(TIMER_PLAYERS_PER_TICK)/float(SPLIT_TIMER_FOR_PLAYERS), Timer_DrawZones, _, TIMER_FLAG_NO_MAPCHANGE|TIMER_REPEAT);
 }
 
 public void OnMapEnd() {
@@ -374,10 +454,49 @@ public void OnPlayerChangeName(Event event, const char[] name, bool dontBroadcas
 	}
 }
 
+public void OnEntityCreated(int entity, const char[] classname) {
+	if (StrEqual(classname, "player")) {
+		HookClient(entity);
+	}
+}
+
+void HookClient(int client) {
+	SDKHook(client, SDKHook_OnTakeDamagePost, OnClientTakeDamagePost);
+}
+public void OnClientTakeDamagePost(int victim, int attacker, int inflictor, float damage, int damagetype) {
+	if (IsClientInGame(victim) && !IsFakeClient(victim) && GetClientHealth(victim) <= 0)
+		HandleClientDeath(victim);
+}
+public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (client && !IsFakeClient(client))
+		HandleClientDeath(client);
+}
+void HandleClientDeath(int client) {
+	if (clientAttempts[client].track != INVALID_TRACK) {
+		Track track;
+		track.FetchSelf(clientAttempts[client].track);
+		PrintToChat(client, "[QT] You're attempt at \"%s\" was cancelled", track.name);
+		Attempt_Stop(client);
+	}
+}
+
+public Action OnPlayerTeleported(Event event, const char[] name, bool dontBroadcast) {
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (client && clientAttempts[client].track != INVALID_TRACK) {
+		Track track;
+		track.FetchSelf(clientAttempts[client].track);
+		PrintToChat(client, "[QT] You're attempt at \"%s\" was cancelled", track.name);
+		Attempt_Stop(client);
+	}
+	return Plugin_Continue;
+}
 
 public void OnGameFrame() {
 	for (int client=1;client<=MaxClients;client+=1) {
 		if (!IsClientInGame(client) || GetClientTeam(client) < 2 || IsFakeClient(client)) continue;
+		//game specific stuff (prevent scoring under some conditions)
+		if (GetEngineVersion()==Engine_TF2 && TF2_IsPlayerInCondition(client, TFCond_Teleporting)) continue;
 		
 		int index;
 		//checking the client zone automatically advances zones/track progress
@@ -387,7 +506,7 @@ public void OnGameFrame() {
 		} else if ((index = Track_IsInEditor(clientAttempts[client].track))) {
 			Track track;
 			track.FetchSelf(clientTrackEditIndex[index]);
-			PrintToChat(client, "[QT] The track '%s' was moved into the editor", track.name);
+			PrintToChat(client, "[QT] The track \"%s\" was moved into the editor", track.name);
 			Attempt_Stop(client);
 		}
 	}
@@ -407,7 +526,12 @@ public Action Command_MakeTrack(int client, int args) {
 		strcopy(track.name, sizeof(Track::name), givenname);
 		trackid = g_Tracks.PushArray(track);
 	}
-	Track_StartEdit(client, trackid);
+	int editor;
+	if ((editor=Track_IsInEditor(trackid)) && editor != client) {
+		ReplyToCommand(client, "[QT] %N is already editing this track", editor);
+	} else {
+		Track_StartEdit(client, trackid);
+	}
 	return Plugin_Handled;
 }
 
@@ -508,7 +632,8 @@ void ShowEditTrackMenu(int client) {
 	menu.AddItem("open", buffer);
 	Format(buffer, sizeof(buffer), "%i Zones...", track.zones.Length);
 	menu.AddItem("zones", buffer);
-	menu.AddItem("", "", ITEMDRAW_SPACER);
+	if (track.laps) Format(buffer, sizeof(buffer), "%i Laps...", track.laps); else buffer = "Linear...";
+	menu.AddItem("laps", buffer);
 	menu.AddItem("", "", ITEMDRAW_SPACER);
 	menu.AddItem("reset", "Reset Scores");
 	menu.AddItem("", "", ITEMDRAW_SPACER);
@@ -521,8 +646,8 @@ public int HandleEditTrackMenu(Menu menu, MenuAction action, int param1, int par
 	if (action == MenuAction_End) {
 		delete menu;
 	} else if (action == MenuAction_Cancel) {
-		if (param2 != MenuCancel_Interrupted || clientEditorState[param1] != EDIT_ZONE) {
-			//menu went away by exit, disconnect, ... OR was interruped by something other than the zone edit menu
+		if (param2 != MenuCancel_Interrupted || (clientEditorState[param1] != EDIT_ZONE && clientEditorState[param1] != EDIT_TRACKSUB) ) {
+			//menu went away by exit, disconnect, ... OR was interruped by something other than the zone edit menu or another sub menu
 			clientEditorState[param1] = EDIT_NONE;
 			clientTrackEditIndex[param1] = INVALID_TRACK;
 		}
@@ -539,6 +664,9 @@ public int HandleEditTrackMenu(Menu menu, MenuAction action, int param1, int par
 			clientEditorState[param1] = EDIT_ZONE;
 			clientZoneEditIndex[param1] = ZONE_EDITNONE;
 			ShowEditZoneMenu(param1);
+		} else if (StrEqual(info, "laps")) {
+			clientEditorState[param1] = EDIT_TRACKSUB;
+			ShowEditLapsMenu(param1);
 		} else if (StrEqual(info, "reset")) {
 			//delete scores for track
 			for (int i=g_TrackScores.Length-1; i>=0; i-=1) {
@@ -560,7 +688,7 @@ public int HandleEditTrackMenu(Menu menu, MenuAction action, int param1, int par
 			track.Free(clientTrackEditIndex[param1]);
 			clientEditorState[param1] = EDIT_NONE;
 			clientTrackEditIndex[param1] = INVALID_TRACK;
-			PrintToChat(param1, "[QT] The track '%s' was deleted!", track.name);
+			PrintToChat(param1, "[QT] The track \"%s\" was deleted!", track.name);
 		}
 	}
 }
@@ -697,8 +825,10 @@ void ShowPickZoneMenu(int client) {
 	else
 		menu.SetTitle("Editing Track\n %s\nThis track is currently empty", track.name);
 	
-	menu.AddItem("first", "Insert new first", (track.zones.Length >= MAX_ZONES_PER_TRACK) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
-	menu.AddItem("last", "Append new last", (track.zones.Length >= MAX_ZONES_PER_TRACK) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	menu.AddItem("first", "Go to first", (track.zones.Length == 0) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	menu.AddItem("last", "Go to last", (track.zones.Length == 0) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	menu.AddItem("insert", "Insert new first", (track.zones.Length >= MAX_ZONES_PER_TRACK) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	menu.AddItem("append", "Append new last", (track.zones.Length >= MAX_ZONES_PER_TRACK) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	if (track.zones.Length >= MAX_ZONES_PER_TRACK) {
 		menu.AddItem("", "Zone limit reached", ITEMDRAW_DISABLED);
 	}
@@ -733,6 +863,14 @@ public int HandlePickZoneMenu(Menu menu, MenuAction action, int param1, int para
 			clientZoneEditIndex[param1] = ZONE_EDITNONE;
 			ShowPickZoneMenu(param1);
 		} else if (StrEqual(info, "first")) {
+			//open menu on zone 0
+			clientZoneEditIndex[param1] = 0;
+			ShowEditZoneMenu(param1);
+		} else if (StrEqual(info, "last")) {
+			//open menu on last zone
+			clientZoneEditIndex[param1] = track.zones.Length-1;
+			ShowEditZoneMenu(param1);
+		} else if (StrEqual(info, "insert")) {
 			//insert zone at front
 			if (track.zones.Length) {
 				track.zones.ShiftUp(0);
@@ -743,7 +881,7 @@ public int HandlePickZoneMenu(Menu menu, MenuAction action, int param1, int para
 			clientZoneEditIndex[param1] = 0;
 			//open menu
 			ShowEditZoneMenu(param1);
-		} else if (StrEqual(info, "last")) {
+		} else if (StrEqual(info, "append")) {
 			//insert zone at end
 			int tail = track.zones.PushArray(zone);
 			clientZoneEditIndex[param1] = tail;
@@ -753,66 +891,138 @@ public int HandlePickZoneMenu(Menu menu, MenuAction action, int param1, int para
 	}
 }
 
+void ShowEditLapsMenu(int client) {
+	if (clientEditorState[client] != EDIT_TRACKSUB) {
+		PrintToChat(client, "[QT] You are not editing any track at the moment");
+		return;
+	}
+	Menu menu = CreateMenu(HandleEditLapsMenu);
+	Track track;
+	track.FetchSelf(clientTrackEditIndex[client]);
+	menu.SetTitle("Editing Track\n %s\n %i Lap(s)", track.name, track.laps);
+	menu.AddItem("0", "Linear");
+	menu.AddItem("1", "1 Lap");
+	menu.AddItem("2", "2 Laps");
+	menu.AddItem("3", "3 Laps");
+	menu.AddItem("4", "4 Laps");
+	menu.AddItem("5", "5 Laps");
+	menu.AddItem("6", "6 Laps");
+	
+	menu.ExitBackButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int HandleEditLapsMenu(Menu menu, MenuAction action, int param1, int param2) {
+	if (action == MenuAction_End) {
+		delete menu;
+	} else if (action == MenuAction_Cancel) {
+		if (param2 == MenuCancel_ExitBack) {
+			clientEditorState[param1] = EDIT_TRACK;
+			ShowEditTrackMenu(param1);
+		} else {
+			//menu went away by exit, disconnect, was interruped by something else, ...
+			clientEditorState[param1] = EDIT_NONE;
+			clientTrackEditIndex[param1] = INVALID_TRACK;
+			clientZoneEditIndex[param1] = ZONE_EDITNONE;
+		}
+	} else if (action == MenuAction_Select) {
+		Track track;
+		track.FetchSelf(clientTrackEditIndex[param1]);
+		//we don't need to push because we're only editing values behind a handle
+		char info[16];
+		GetMenuItem(menu, param2, info, sizeof(info));
+		
+		int laps = StringToInt(info);
+		track.laps = laps;
+		track.PushSelf(clientTrackEditIndex[param1]);
+		
+		ShowEditLapsMenu(param1);
+	}
+}
+
 int g_colStart[4] = { 0,255,0,255 };
 int g_colEnd[4] = { 255,0,0,255 };
 int g_colWhite[4] = { 255,255,255,255 };
 int g_colActive[4] = { 255,200,0,255 };
 public Action Timer_DrawZones(Handle timer) {
+	//to not overwhelm the te system, the draws are split up using a timer
+	
+	static int client = 1;
+	int start = client;
+	for (int i; i<TIMER_PLAYERS_PER_TICK; i++) {
+		if (++client > SPLIT_TIMER_FOR_PLAYERS) client = 1;
+		if (start == client) break; //we are repeating
+		DrawZonesFor(client);
+	}
+	
+	return Plugin_Continue;
+}
+void DrawZonesFor(int client) {
+	if (!IsClientInGame(client) || IsFakeClient(client) || GetClientTeam(client)<2) {
+		return;
+	}
+	
 	Track track;
 	ZoneData zone;
-	for (int client=1; client <= MaxClients; client += 1) {
-		if (!IsClientInGame(client) || IsFakeClient(client) || GetClientTeam(client)<2) continue;
-		if (clientEditorState[client] != EDIT_NONE) {
-			track.FetchSelf(clientTrackEditIndex[client]);
-			int lastZone = track.zones.Length-1;
-			float tppp[3], tppt[3]; // tele-port point prev/this
-			for (int i=0;i<=lastZone;i++) {
-				track.zones.GetArray(i,zone);
-				tppp = tppt; //track line prev to this
-				zone.GetTelepoint(tppt);
-				if (GetClientPointDistance(client, tppt, true) < 9000000.0) {
-					//keep a render dinstace, so draw calls don't fill up as easily
-					if (i==0)
-						DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colStart, i==clientZoneEditIndex[client]);
-					else if (i==lastZone)
-						DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colEnd, i==clientZoneEditIndex[client]);
-					else if (i==clientZoneEditIndex[client]) 
-						DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colActive, i==clientZoneEditIndex[client]);
-				}
-				//track line
-				if (i!=0 && (i==clientZoneEditIndex[client] || (i-1)==clientZoneEditIndex[client]))
-					DrawBeamSimple(client, tppp, tppt, 1.0, g_colWhite);
+	
+	if (clientEditorState[client] != EDIT_NONE) {
+		track.FetchSelf(clientTrackEditIndex[client]);
+		int lastZone = track.zones.Length-1;
+		float tppp[3], tppt[3]; // tele-port point prev/this
+		for (int i=0;i<=lastZone;i++) {
+			track.zones.GetArray(i,zone);
+			tppp = tppt; //track line prev to this
+			zone.GetTelepoint(tppt);
+			if (GetClientPointDistance(client, tppt, true) < 9000000.0) {
+				//keep a render dinstace, so draw calls don't fill up as easily
+				if (i==0)
+					DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colStart, i==clientZoneEditIndex[client]);
+				else if (i==lastZone && !track.laps)
+					DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colEnd, i==clientZoneEditIndex[client]);
+				else if (i==clientZoneEditIndex[client]) 
+					DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colActive, i==clientZoneEditIndex[client]);
 			}
-			
-		} else if (clientAttempts[client].track == INVALID_TRACK) {
-			//no active tracks, draw all starts
-			for (int t=0; t<g_Tracks.Length; t+=1) {
-				if (Track_IsInEditor(t)) continue;
-				track.FetchSelf(t);
-				if (!track.open || track.zones.Length==0) continue;
-				track.zones.GetArray(0, zone);
-				DrawBeamBox(client, zone.mins, zone.maxs, 3.0, g_colStart);
-			}
-		} else {
-			track.FetchSelf(clientAttempts[client].track);
-			int lastZone = track.zones.Length-1;
-			for (int i=0;i<=lastZone;i++) {
-				track.zones.GetArray(i,zone);
-				float vec[3];
-				zone.GetTelepoint(vec);
-				if (GetClientPointDistance(client, vec, true) < 9000000.0) {
-					//keep a render dinstace, so draw calls don't fill up as easily
-					if (i==0)
-						DrawBeamBox(client, zone.mins, zone.maxs, 3.0, g_colStart);
-					else if (i==lastZone)
-						DrawBeamBox(client, zone.mins, zone.maxs, 3.0, g_colEnd);
-					else if ((i==1 && clientAttempts[client].zone == ZONE_INSTART) || clientAttempts[client].zone+1 == i)
-						DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colActive);
-				}
-			}
+			//track line
+			if (i!=0 && (i==clientZoneEditIndex[client] || (i-1)==clientZoneEditIndex[client]))
+				DrawBeamSimple(client, tppp, tppt, 1.0, g_colWhite);
+		}
+		
+	} else if (clientAttempts[client].track == INVALID_TRACK) {
+		//no active tracks, draw all starts
+		for (int t=0; t<g_Tracks.Length; t+=1) {
+			if (Track_IsInEditor(t)) continue;
+			track.FetchSelf(t);
+			if (!track.open || track.zones.Length<=1) continue;
+			track.zones.GetArray(0, zone);
+			DrawBeamBox(client, zone.mins, zone.maxs, 3.0, g_colStart);
+		}
+	} else {
+		track.FetchSelf(clientAttempts[client].track);
+		int lastZone = track.zones.Length-1;
+		int nextZone = clientAttempts[client].zone == ZONE_INSTART ? 1 : clientAttempts[client].zone + 1;
+		if (nextZone > lastZone) nextZone = 0;
+		
+		float vec[3];
+		track.zones.GetArray(0,zone);
+		zone.GetTelepoint(vec);
+		if (GetClientPointDistance(client, vec, true) < 9000000.0) {
+			//keep a render dinstace, so draw calls don't fill up as easily
+			bool lastLap = track.laps && clientAttempts[client].lap == track.laps;
+			DrawBeamBox(client, zone.mins, zone.maxs, 3.0, lastLap ? g_colEnd : g_colStart);
+		}
+		if (nextZone != 0 && (nextZone != lastZone || track.laps)) {
+			track.zones.GetArray(nextZone,zone);
+			zone.GetTelepoint(vec);
+			if (GetClientPointDistance(client, vec, true) < 9000000.0)
+				DrawBeamBox(client, zone.mins, zone.maxs, 2.0, g_colActive);
+		}
+		if (!track.laps) {
+			track.zones.GetArray(lastZone,zone);
+			zone.GetTelepoint(vec);
+			if (GetClientPointDistance(client, vec, true) < 9000000.0)
+				DrawBeamBox(client, zone.mins, zone.maxs, 3.0, g_colEnd);
 		}
 	}
-	return Plugin_Continue;
 }
 
 float GetClientPointDistance(int client, const float vec[3], bool squared=false) {
