@@ -6,7 +6,7 @@
 #include <SetCollisionGroup> //is included in sourcemod with 1.11
 #endif
 
-#define PLUGIN_VERSION "22w16a"
+#define PLUGIN_VERSION "22w24a"
 
 public Plugin myinfo = {
 	name = "Slap and Bury",
@@ -66,7 +66,7 @@ methodmap Player {
 		delete hdlTrace;
 		//actually bury them already
 		buryPos[2] -= 30; //in floor
-		SetEntityMoveType(this.Client, MOVETYPE_NOCLIP);
+		SetEntityMoveType(this.Client, MOVETYPE_NONE);
 		SetEntityCollisionGroup(this.Client, 0);
 		float zeros[3];
 		TeleportEntity(this.Client, buryPos, NULL_VECTOR, zeros);
@@ -126,6 +126,8 @@ public void OnPluginStart() {
 	RegAdminCmd("sm_unbury", Command_Unbury, ADMFLAG_SLAY, "Usage: sm_unbury <targets> - Bury a player in the ground, imobalizing them");
 	RegAdminCmd("sm_rslap", Command_RSlap, ADMFLAG_SLAY, "Usage: sm_rslap <targets> [repeats=1] [delay=0.2] [damage=0] - Slap a player multiple times, delay is 0.02..0.5");
 	
+	AddCommandListener(Command_Kill, "kill")
+	
 	HookEvent("player_death", OnClientDeathPost);
 	HookEvent("teamplay_round_start", OnMapEntitiesRefreshed);
 	HookEvent("teamplay_restart_round", OnMapEntitiesRefreshed);
@@ -158,6 +160,13 @@ static void UnburyAll() {
 	}
 }
 
+public Action Command_Kill(int client, const char[] command, int argc) {
+	if (Player(client).IsBuried) {
+		ReplyToCommand(client, "[SM] You cannot do this right now");
+		return Plugin_Handled;
+	}
+	return Plugin_Continue;
+}
 public Action Command_Bury(int client, int args) {
 	if (!args) {
 		ReplyToCommand(client, "Usage: sm_bury <targets>");
@@ -214,7 +223,7 @@ void ActBuryOn(int[] targets, int numtargets, bool unbury=false) {
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2]) {
-	if (Player(client).IsBuried) {
+	if (Player(client).IsBuried && (buttons & (IN_JUMP|IN_DUCK|IN_FORWARD|IN_BACK|IN_MOVELEFT|IN_MOVERIGHT)) ) {
 		buttons &=~ (IN_JUMP|IN_DUCK|IN_FORWARD|IN_BACK|IN_MOVELEFT|IN_MOVERIGHT);
 		return Plugin_Changed;
 	}
