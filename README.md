@@ -75,7 +75,10 @@ Allows servermods to quickly set up race tracks around maps with checkpoints, si
 The setup is done entirely through VGUI menus and player positioning.
 Checkpoints within a track have to be visited in sequence for the attempt to progress, best times get a shoutout.
 
+Saving tracks will write all open tracks with zones into a config file in tf/cfg/tracks/ named after the map.
+The file is reloaded at map start, but can manually be reloaded at any point.
+
 Commands:
-* sm_edittrack &lt;track> - Open the track editor for the track (ADMFLAG_GENERIC)
+* sm_edittrack [track] - Open the track editor for the track (ADMFLAG_GENERIC)
 * sm_tracktop [track] - Open the top-scores for the current track, or the specified track
 * sm_stoptrack - End the track a player is currently on
