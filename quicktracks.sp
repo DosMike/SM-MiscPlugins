@@ -8,7 +8,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w23c"
+#define PLUGIN_VERSION "22w38a"
 
 public Plugin myinfo = {
 	name = "Quick Tracks",
@@ -27,6 +27,14 @@ public Plugin myinfo = {
 #define EDIT_ZONE 2
 #define EDIT_TRACKSUB 3
 
+#define RULE_CLASS(%1) (1<<(%1))
+#define RULE_ALLCLASSES (0x01FF)
+#define RULE_NOCHARGE (1<<9)
+#define RULE_TAUNTONLY (1<<10)
+#define RULE_VEHICLEONLY (1<<11)
+#define RULE_DONTJUMP (1<<12)
+#define RULE_DONTLAND (1<<13)
+
 #define MAX_ZONES_PER_TRACK 64
 //one vgui menu page can hold 7, usual player cap is ~32
 #define MAX_TRACK_SCORES 35
@@ -39,6 +47,15 @@ public Plugin myinfo = {
 
 float ZERO_VECTOR[3];
 
+//TFClassType gMenuClass[9] = {
+//	TFClass_Scout, TFClass_Soldier, TFClass_Pyro, TFClass_DemoMan, TFClass_Heavy, TFClass_Engineer, TFClass_Medic, TFClass_Sniper, TFClass_Spy
+//};
+char gMenuClassNames[9][12] = {
+	"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"
+};
+int gMenuClassReverse[10] = {
+	-1, 0, 7, 1, 3, 6, 4, 2, 8, 5
+};
 
 enum struct ZoneData {
 	int track;
@@ -91,6 +108,8 @@ Attempt clientAttempts[MAXPLAYERS+1];
 int clientEditorState[MAXPLAYERS+1];
 int clientTrackEditIndex[MAXPLAYERS+1];
 int clientZoneEditIndex[MAXPLAYERS+1];
+int clientVehicleTaunting[MAXPLAYERS+1];
+bool clientIsAirborn[MAXPLAYERS+1];
 
 StringMap g_authNames;
 char clientSteamIds[MAXPLAYERS+1][48];
@@ -104,10 +123,12 @@ enum struct Track {
 	ArrayList zones; //list of zonedata
 	bool open;
 	int laps; //0 for linear
+	int rules;
 	
 	void Reinit(int selfTrack) {
 		if (selfTrack >= 0 && this.zones != null) this.zones.Clear();
 		else this.zones = new ArrayList(sizeof(ZoneData));
+		this.rules = RULE_ALLCLASSES;
 	}
 	void Free(int selfTrack) {
 		if (this.zones != null) delete this.zones;
@@ -140,7 +161,7 @@ int Track_FindByClientStart(int client) {
 	for (int t=g_Tracks.Length-1; t>=0; t-=1) {
 		if (Track_IsInEditor(t)) continue;
 		track.FetchSelf(t);
-		if (!track.open) continue;
+		if (!track.open || track.zones.Length==0) continue;
 		track.zones.GetArray(0, zone);
 		if (zone.IsInside(client)) {
 			return t;
@@ -196,6 +217,54 @@ void Track_StartEdit(int client, int track) {
 		clientZoneEditIndex[client] = ZONE_EDITNONE;
 		ShowEditTrackMenu(client);
 	}
+}
+
+bool Track_CheckClientRules(int client, int trackIdx) {
+	Track track;
+	track.FetchSelf(trackIdx);
+	int playerClass = gMenuClassReverse[TF2_GetPlayerClass(client)];
+	if (playerClass < 0) {
+		Attempt_Stop(client);
+		return false;
+	}
+	if (!(track.rules & RULE_CLASS(playerClass))) {
+		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled: The class %s is not allowed", track.name, gMenuClassNames[playerClass]);
+		Attempt_Stop(client);
+		return false;
+	}
+	if (track.rules & RULE_DONTJUMP && GetClientButtons(client) & IN_JUMP) {
+		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled: Do not jump", track.name);
+		Attempt_Stop(client);
+		return false;
+	}
+	if (track.rules & RULE_DONTLAND) {
+		bool ground = !!(GetEntityFlags(client) & (FL_SWIM|FL_FROZEN|FL_INWATER|FL_ONGROUND|FL_PARTIALGROUND));
+		if (clientIsAirborn[client] && ground) {
+			PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled: Do not land after leaving the ground", track.name);
+			Attempt_Stop(client);
+			return false;
+		}
+		clientIsAirborn[client]=!ground;
+	}
+	if ((track.rules & RULE_VEHICLEONLY)) {
+		if (!clientVehicleTaunting[client]) {
+			PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled: Track requires vehicle taunt", track.name);
+			Attempt_Stop(client);
+			return false;
+		} 
+		return true;
+	}
+	if ((track.rules & RULE_NOCHARGE) && TF2_IsPlayerInCondition(client, TFCond_Charging)) {
+		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled: Charging is not allowed", track.name);
+		Attempt_Stop(client);
+		return false;
+	}
+	if ((track.rules & RULE_TAUNTONLY) && !TF2_IsPlayerInCondition(client, TFCond_Taunting)) {
+		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled: Track requires taunting", track.name);
+		Attempt_Stop(client);
+		return false;
+	}
+	return true;
 }
 
 #define SELF clientAttempts[client]
@@ -262,11 +331,71 @@ public void OnClientAuthorized(int client, const char[] auth) {
 	g_authNames.SetString(clientSteamIds[client], buffer);
 }
 
+public void TF2_OnConditionAdded(int client, TFCond condition) {
+	if (condition == TFCond_Taunting) {
+		int taunt = GetEntProp(client, Prop_Send, "m_iTauntItemDefIndex");
+		PrintToServer("Client %N is playing taunt %i", client, taunt);
+		switch (taunt) {
+			case 31156, //boston boarder
+			     30920, //bunnyhopper
+			     1197, //scooty scoot
+			     1196, //panzer pants
+			     31155, //rocket jockey
+			     31239, //hot wheeler
+			     30919, //skating scorcher
+			     30840, //scotsmann's stagger
+			     30845, //jumping jack
+			     31160, //texas truckin
+			     31203, //mannbulance
+			     1172, //victory lap
+			     30672: //zoomin' broom
+			{
+				clientVehicleTaunting[client] = true;
+			}
+			default: {
+				clientVehicleTaunting[client] = false;
+			}
+		}
+	}
+}
+public void TF2_OnConditionRemoved(int client, TFCond condition) {
+	if (condition == TFCond_Taunting) {
+		clientVehicleTaunting[client] = false;
+	}
+}
+
+
 void _OnClientStartTrack(int client, int trackIdx) {
 	clientAttempts[client].Init(trackIdx);
 	Track track;
 	track.FetchSelf(trackIdx);
 	PrintToChat(client, "[QT] You have started the track \"%s\".\n  Use /stoptrack to cancel.", track.name);
+	if (track.rules != RULE_ALLCLASSES) {
+		char buffer[256];
+		//non-default rules, let's tell the player
+		if ((track.rules & RULE_ALLCLASSES) != RULE_ALLCLASSES) {
+			//class limits are imposed
+			buffer = "  These classes are blocked: ";
+			for (int class; class < 9; class++) {
+				if (!(track.rules & RULE_CLASS(class))) {
+					Format(buffer, sizeof(buffer), "%s%s, ", buffer, gMenuClassNames[class]);
+				}
+			}
+			buffer[strlen(buffer)-2]=0; //remove last comma
+			PrintToChat(client, buffer);
+		}
+		if ((track.rules & ~RULE_ALLCLASSES)) {
+			//other rules are imposed
+			buffer = "  This track requires: ";
+			if ((track.rules & RULE_NOCHARGE)) StrCat(buffer, sizeof(buffer), "No Demo Charging, ");
+			if ((track.rules & RULE_TAUNTONLY)) StrCat(buffer, sizeof(buffer), "Taunting Only, ");
+			if ((track.rules & RULE_VEHICLEONLY)) StrCat(buffer, sizeof(buffer), "Vehicle Taunt, ");
+			if ((track.rules & RULE_DONTJUMP)) StrCat(buffer, sizeof(buffer), "Don't Jump, ");
+			if ((track.rules & RULE_DONTLAND)) StrCat(buffer, sizeof(buffer), "Don't Land, ");
+			buffer[strlen(buffer)-2]=0; //remove last comma
+			PrintToChat(client, buffer);
+		}
+	}
 }
 
 void _OnClientAdvanceTrack(int client, int zone, int zoneCount, int lap, int lapCount) {
@@ -428,6 +557,7 @@ public void OnMapStart() {
 	}
 	//poke every player once a second
 	CreateTimer(float(TIMER_PLAYERS_PER_TICK)/float(SPLIT_TIMER_FOR_PLAYERS), Timer_DrawZones, _, TIMER_FLAG_NO_MAPCHANGE|TIMER_REPEAT);
+	LoadTracks();
 }
 
 public void OnMapEnd() {
@@ -476,7 +606,7 @@ void HandleClientDeath(int client) {
 	if (clientAttempts[client].track != INVALID_TRACK) {
 		Track track;
 		track.FetchSelf(clientAttempts[client].track);
-		PrintToChat(client, "[QT] You're attempt at \"%s\" was cancelled", track.name);
+		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled", track.name);
 		Attempt_Stop(client);
 	}
 }
@@ -486,7 +616,7 @@ public Action OnPlayerTeleported(Event event, const char[] name, bool dontBroadc
 	if (client && clientAttempts[client].track != INVALID_TRACK) {
 		Track track;
 		track.FetchSelf(clientAttempts[client].track);
-		PrintToChat(client, "[QT] You're attempt at \"%s\" was cancelled", track.name);
+		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled", track.name);
 		Attempt_Stop(client);
 	}
 	return Plugin_Continue;
@@ -498,23 +628,30 @@ public void OnGameFrame() {
 		//game specific stuff (prevent scoring under some conditions)
 		if (GetEngineVersion()==Engine_TF2 && TF2_IsPlayerInCondition(client, TFCond_Teleporting)) continue;
 		
-		int index;
+		int index, zone = Attempt_GetClientZone(client);
 		//checking the client zone automatically advances zones/track progress
-		if (Attempt_GetClientZone(client) == ZONE_NOTSTARTED) {
+		if (zone == ZONE_NOTSTARTED) {
 			index = Track_FindByClientStart(client);
-			if (index > INVALID_TRACK) _OnClientStartTrack(client, index);
+			if (index > INVALID_TRACK) {
+				clientIsAirborn[client] = false;
+				_OnClientStartTrack(client, index);
+			}
 		} else if ((index = Track_IsInEditor(clientAttempts[client].track))) {
 			Track track;
 			track.FetchSelf(clientTrackEditIndex[index]);
 			PrintToChat(client, "[QT] The track \"%s\" was moved into the editor", track.name);
 			Attempt_Stop(client);
+		} else if (zone >= 0) {
+			Track_CheckClientRules(client, index); //not following the set up rules
 		}
 	}
 }
 
 public Action Command_MakeTrack(int client, int args) {
 	if (args == 0) {
-		ReplyToCommand(client, "[QT] Please specify a track name!");
+		if (g_Tracks.Length == 0)
+			ReplyToCommand(client, "[QT] Specify a track name to create or edit a track");
+		ShowTrackPickMenu(client);
 		return Plugin_Handled;
 	}
 	char givenname[64];
@@ -617,6 +754,52 @@ public Action Command_TeamSay(int client, const char[] command, int argc) {
 	return Plugin_Stop;
 }
 
+void ShowTrackPickMenu(int client) {
+	if (clientEditorState[client] != EDIT_NONE) {
+		PrintToChat(client, "[QT] You are currently editing a track");
+		return;
+	}
+	Menu menu = CreateMenu(HandleTrackPickMenu);
+	menu.SetTitle("Track Menu");
+	menu.AddItem("save", "<Save Tracks>");
+	menu.AddItem("load", "<Reload Tracks>");
+	if (g_Tracks.Length) {
+		char buffer[16];
+		Track track;
+		for (int i=0;i<g_Tracks.Length;i++) {
+			Format(buffer, sizeof(buffer), "%d", i);
+			g_Tracks.GetArray(i,track);
+			menu.AddItem(buffer,track.name);
+		}
+	} else {
+		menu.AddItem("--", "No tracks yet", ITEMDRAW_DISABLED);
+	}
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int HandleTrackPickMenu(Menu menu, MenuAction action, int param1, int param2) {
+	if (action == MenuAction_End) {
+		delete menu;
+	} else if (action == MenuAction_Select) {
+		char buffer[16], name[64];
+		menu.GetItem(param2, buffer, sizeof(buffer), _, name, sizeof(name));
+		if (StrEqual(buffer,"save")) {
+			SaveTracks();
+			PrintToChat(param1, "[QT] You saved the tracks for this map to disk");
+		} else if (StrEqual(buffer,"load")) {
+			OnMapEnd();
+			LoadTracks();
+			PrintToChat(param1, "[QT] You reloaded all tracks from disk - all changes and score were cleared");
+		} else if (!StrEqual(buffer,"--")) {
+			int track = Track_FindByName(name);
+			if (track == INVALID_TRACK) {
+				PrintToChat(param1, "[QT] Selecting track %s failed, maybe another player changed the track list", name);
+			} else {
+				Track_StartEdit(param1, track);
+			}
+		}
+	}
+}
 
 void ShowEditTrackMenu(int client) {
 	if (clientEditorState[client] != EDIT_TRACK) {
@@ -634,11 +817,14 @@ void ShowEditTrackMenu(int client) {
 	menu.AddItem("zones", buffer);
 	if (track.laps) Format(buffer, sizeof(buffer), "%i Laps...", track.laps); else buffer = "Linear...";
 	menu.AddItem("laps", buffer);
+	menu.AddItem("rules", "Rules...");
 	menu.AddItem("", "", ITEMDRAW_SPACER);
 	menu.AddItem("reset", "Reset Scores");
 	menu.AddItem("", "", ITEMDRAW_SPACER);
 	menu.AddItem("delete", "Delete Track");
 	
+	menu.Pagination = MENU_NO_PAGINATION;
+	menu.ExitButton = true;
 	menu.Display(client, MENU_TIME_FOREVER);
 }
 
@@ -667,6 +853,9 @@ public int HandleEditTrackMenu(Menu menu, MenuAction action, int param1, int par
 		} else if (StrEqual(info, "laps")) {
 			clientEditorState[param1] = EDIT_TRACKSUB;
 			ShowEditLapsMenu(param1);
+		} else if (StrEqual(info, "rules")) {
+			clientEditorState[param1] = EDIT_TRACKSUB;
+			ShowEditRulesMenu(param1);
 		} else if (StrEqual(info, "reset")) {
 			//delete scores for track
 			for (int i=g_TrackScores.Length-1; i>=0; i-=1) {
@@ -940,6 +1129,79 @@ public int HandleEditLapsMenu(Menu menu, MenuAction action, int param1, int para
 	}
 }
 
+void ShowEditRulesMenu(int client, int firstItem=0) {
+	if (clientEditorState[client] != EDIT_TRACKSUB) {
+		PrintToChat(client, "[QT] You are not editing any track at the moment");
+		return;
+	}
+	
+	Menu menu = CreateMenu(HandleEditRulesMenu);
+	Track track;
+	char buffer[32];
+	track.FetchSelf(clientTrackEditIndex[client]);
+	
+	menu.SetTitle("Editing Track\n %s\n Set Rules", track.name);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(0) ? 'X' : ' ', gMenuClassNames[0]);
+	menu.AddItem("0", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(1) ? 'X' : ' ', gMenuClassNames[1]);
+	menu.AddItem("1", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(2) ? 'X' : ' ', gMenuClassNames[2]);
+	menu.AddItem("2", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(3) ? 'X' : ' ', gMenuClassNames[3]);
+	menu.AddItem("3", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(4) ? 'X' : ' ', gMenuClassNames[4]);
+	menu.AddItem("4", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(5) ? 'X' : ' ', gMenuClassNames[5]);
+	menu.AddItem("5", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(6) ? 'X' : ' ', gMenuClassNames[6]);
+	menu.AddItem("6", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(7) ? 'X' : ' ', gMenuClassNames[7]);
+	menu.AddItem("7", buffer);
+	Format(buffer, sizeof(buffer), "[%c] %s", track.rules & RULE_CLASS(8) ? 'X' : ' ', gMenuClassNames[8]);
+	menu.AddItem("8", buffer);
+	Format(buffer, sizeof(buffer), "[%c] No Demo Charging", track.rules & RULE_NOCHARGE ? 'X' : ' ');
+	menu.AddItem("9", buffer);
+	Format(buffer, sizeof(buffer), "[%c] Only Taunts", track.rules & RULE_TAUNTONLY ? 'X' : ' ');
+	menu.AddItem("10", buffer);
+	Format(buffer, sizeof(buffer), "[%c] Only Vehicle Taunts", track.rules & RULE_VEHICLEONLY ? 'X' : ' ');
+	menu.AddItem("11", buffer);
+	Format(buffer, sizeof(buffer), "[%c] Dont Jump", track.rules & RULE_DONTJUMP ? 'X' : ' ');
+	menu.AddItem("12", buffer);
+	Format(buffer, sizeof(buffer), "[%c] Dont Land after Airborn", track.rules & RULE_DONTLAND ? 'X' : ' ');
+	menu.AddItem("13", buffer);
+	
+	menu.ExitBackButton = true;
+	menu.DisplayAt(client, firstItem, MENU_TIME_FOREVER);
+}
+
+public int HandleEditRulesMenu(Menu menu, MenuAction action, int param1, int param2) {
+	if (action == MenuAction_End) {
+		delete menu;
+	} else if (action == MenuAction_Cancel) {
+		if (param2 == MenuCancel_ExitBack) {
+			clientEditorState[param1] = EDIT_TRACK;
+			ShowEditTrackMenu(param1);
+		} else {
+			//menu went away by exit, disconnect, was interruped by something else, ...
+			clientEditorState[param1] = EDIT_NONE;
+			clientTrackEditIndex[param1] = INVALID_TRACK;
+			clientZoneEditIndex[param1] = ZONE_EDITNONE;
+		}
+	} else if (action == MenuAction_Select) {
+		Track track;
+		track.FetchSelf(clientTrackEditIndex[param1]);
+		//we don't need to push because we're only editing values behind a handle
+		char info[16];
+		GetMenuItem(menu, param2, info, sizeof(info));
+		
+		int ruleFlag = 1<<StringToInt(info);
+		track.rules ^= ruleFlag;
+		track.PushSelf(clientTrackEditIndex[param1]);
+		
+		ShowEditRulesMenu(param1, (param2/7)*7);
+	}
+}
+
 int g_colStart[4] = { 0,255,0,255 };
 int g_colEnd[4] = { 255,0,0,255 };
 int g_colWhite[4] = { 255,255,255,255 };
@@ -1029,6 +1291,122 @@ float GetClientPointDistance(int client, const float vec[3], bool squared=false)
 	float pos[3];
 	Entity_GetAbsOrigin(client,pos);
 	return GetVectorDistance(pos,vec,squared);
+}
+
+void SaveTracks() {
+	char mapname[72];
+	char buffer[128];
+	GetCurrentMap(mapname,sizeof(mapname));
+	KeyValues kv = CreateKeyValues("Tracks");
+	if (!DirExists("cfg/tracks") && !CreateDirectory("cfg/tracks", FPERM_O_READ|FPERM_O_EXEC|FPERM_G_READ|FPERM_G_EXEC|FPERM_U_READ|FPERM_U_WRITE|FPERM_U_EXEC)) {
+		PrintToServer("Could not create tracks directory, saving failed!");
+		return;
+	}
+	
+	Track track; int count;
+	ZoneData zone;
+	for (int i=0;i<g_Tracks.Length;i++) {
+		g_Tracks.GetArray(i,track);
+		if (!track.open || track.zones.Length == 0) continue;
+		count++;
+		
+		kv.JumpToKey(track.name, true);
+			kv.SetNum("laps", track.laps);
+			kv.JumpToKey("rules", true);
+				buffer[0]=0;
+				for (int c=0;c<9;c++) {
+					if ((track.rules & RULE_CLASS(c))) {
+						StrCat(buffer, sizeof(buffer), " ");
+						StrCat(buffer, sizeof(buffer), gMenuClassNames[c]);
+						TrimString(buffer);
+					}
+				}
+				kv.SetString("classes", buffer);
+				kv.SetNum("no_demo_charge", (track.rules & RULE_NOCHARGE)!=0);
+				kv.SetNum("taunts_only", (track.rules & RULE_TAUNTONLY)!=0);
+				kv.SetNum("vehicle_only", (track.rules & RULE_VEHICLEONLY)!=0);
+				kv.SetNum("dont_jump", (track.rules & RULE_DONTJUMP)!=0);
+				kv.SetNum("dont_land", (track.rules & RULE_DONTLAND)!=0);
+			kv.GoBack();
+			kv.JumpToKey("zones", true);
+			for (int z=0;z<track.zones.Length;z++) {
+				track.zones.GetArray(z,zone);
+				
+				Format(buffer,sizeof(buffer),"%d",(z+1));
+				kv.JumpToKey(buffer, true);
+					kv.SetVector("low", zone.mins);
+					kv.SetVector("high", zone.maxs);
+				kv.GoBack();
+			}
+			kv.GoBack();
+		kv.GoBack();
+	}
+	
+	Format(buffer, sizeof(buffer), "cfg/tracks/%s.cfg", mapname);
+	if (count) {
+		kv.Rewind();
+		kv.ExportToFile(buffer);
+	} else if (kv.ImportFromFile(buffer)) {
+		//we had a file, but zones were all deleted
+		DeleteFile(buffer);
+	}
+	delete kv;
+}
+void LoadTracks() {
+	char mapname[72];
+	char buffer[128];
+	GetCurrentMap(mapname,sizeof(mapname));
+	KeyValues kv = CreateKeyValues("Tracks");
+	
+	Track track;
+	ZoneData zone;
+	
+	Format(buffer, sizeof(buffer), "cfg/tracks/%s.cfg", mapname);
+	kv.ImportFromFile(buffer);
+	if (kv.GotoFirstSubKey()) do {
+		track.Reinit(-1);
+		kv.GetSectionName(track.name, sizeof(Track::name));
+		track.open = true;
+		track.laps = kv.GetNum("laps");
+		if (kv.JumpToKey("rules")) {
+			kv.GetString("classes", buffer, sizeof(buffer));
+			track.rules = 0;
+			for (int z=0;z<9;z++) {
+				if (StrContains(buffer, gMenuClassNames[z], false)>=0)
+					track.rules |= RULE_CLASS(z);
+			}
+			if (kv.GetNum("no_demo_charge"))
+				track.rules |= RULE_NOCHARGE;
+			if (kv.GetNum("taunts_only"))
+				track.rules |= RULE_TAUNTONLY;
+			if (kv.GetNum("vehicle_only"))
+				track.rules |= RULE_VEHICLEONLY;
+			if (kv.GetNum("dont_jump"))
+				track.rules |= RULE_DONTJUMP;
+			if (kv.GetNum("dont_land"))
+				track.rules |= RULE_DONTLAND;
+			kv.GoBack();
+		} else {
+			PrintToServer("Could not load rules for track %s", track.name);
+		}
+		if (kv.JumpToKey("zones")) {
+			for (int z=1;;z++) {
+				Format(buffer,sizeof(buffer),"%d",z);
+				if (!kv.JumpToKey(buffer)) break; //all zones get
+				kv.GetVector("low", zone.mins);
+				kv.GetVector("high", zone.maxs);
+				track.zones.PushArray(zone);
+				kv.GoBack();
+			}
+			kv.GoBack();
+		} else {
+			PrintToServer("Track %s could not be loaded, no zones found", track.name);
+			continue; //don't load this track
+		}
+		track.PushSelf();
+	} while (kv.GotoNextKey());
+	
+	delete kv;
 }
 
 #define BEAM(%1,%2) TE_SetupBeamPoints(%1, %2, g_iLaserBeam, 0, 0, 1, 1.0, width, width, 0, 0.0, color, 0);TE_SendToClient(client)
