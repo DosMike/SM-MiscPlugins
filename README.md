@@ -2,12 +2,22 @@
 This repo is for smaller plugins that I don't feel like creating a dedicated repo for.
 
 Table Of Content
+* [[TF2] Additional Settings](#TF2-Additional-Settings)
 * [[TF2/MvM] AutoReady](#TF2MvM-AutoReady)
 * [[ANY] Map Props](#ANY-Map-Props)
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
 * [[TF2] TDM Tickets](#TF2-TDM-Tickets)
 * [[ANY] TP Ask](#ANY-TP-Ask)
 * [[TF2] QuickTrack](#TF2-QuickTrack)
+
+## [TF2] Additional Settings
+
+Implement additional convars for whatever.
+
+Currently adds the following:
+* tf_backstabs 1 - Set to 0 to disable backstab crits
+* mp_instagib 0 - Set to 1 to enable 1-hit kills for everything
+* tf_medic_health_regen 1.0 - Can be used to scale the medics base health regen rate. If below 0.5 the blutsauger will start to drain health.
 
 ## [TF2/MvM] AutoReady
 Basically a re-write of [avi9526's AutoReady](https://forums.alliedmods.net/showthread.php?t=223141).
