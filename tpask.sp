@@ -56,8 +56,12 @@ public void OnPluginStart() {
 	
 	RegAdminCmd("sm_tpa", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt to the target player", "tpask");
 	RegAdminCmd("sm_tpask", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt to the target player", "tpask");
+	RegAdminCmd("sm_gotoa", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt to the target player", "tpask");
+	RegAdminCmd("sm_gotoask", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt to the target player", "tpask");
 	RegAdminCmd("sm_tpahere", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt the target player to you", "tpask");
 	RegAdminCmd("sm_tpaskhere", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt the target player to you", "tpask");
+	RegAdminCmd("sm_bringa", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt the target player to you", "tpask");
+	RegAdminCmd("sm_bringask", Command_TPAsk, ADMFLAG_GENERIC, "Uasge: <target> - Ask to teleprt the target player to you", "tpask");
 	
 	RegAdminCmd("sm_tpaccept", Command_TPAccept, ADMFLAG_GENERIC, "Accept the most recent teleport request", "tpask");
 	RegAdminCmd("sm_tpdeny", Command_TPDeny, ADMFLAG_GENERIC, "Deny the most recent teleport request", "tpask");

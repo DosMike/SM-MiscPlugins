@@ -9,27 +9,32 @@ auth github %{GITHUB_TOKEN}
 # the include directory for this is, uhm... it has an extra s. I should probably pr this?
 dependency github ashort96/SetCollisionGroup master-SNAPSHOT
 move spcache/addons/sourcemod/scripting/includes : spcache/addons/sourcemod/scripting/include
-# lots of features :)
+# lots of features, but kinda broken (i should probably phase it out)
 dependency github bcserv/smlib transitional_syntax-SNAPSHOT
+# additional settings require the RegenThink hook
+dependency github DosMike/TF2-RegenThinkHook master-SNAPSHOT
+dependency github FlaminSarge/tf2attributes v1.7.2
 
 # build
 
+spcomp -O2 additionalsettings.sp
 spcomp -O2 autoready.sp
 spcomp -O2 mapprops.sp
+spcomp -O2 quicktracks.sp
 spcomp -O2 slapandbury.sp
 spcomp -O2 tdm_tickets.sp
 spcomp -O2 tpask.sp
-spcomp -O2 quicktracks.sp
 
 # pack and push zip
 
 with files
+ additionalsettings.smx
  autoready.smx
  mapprops.smx
+ quicktracks.smx
  slapandbury.smx
  tdm_tickets.smx
  tpask.smx
- quicktracks.smx
 :release zip Compiled.zip
 
 with files

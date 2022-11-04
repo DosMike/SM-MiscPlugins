@@ -2,11 +2,11 @@
 #include <dbi>
 #include <sdkhooks>
 #include <sdktools>
-#if SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR < 11
-#include <SetCollisionGroup> //is included in sourcemod with 1.11
-#endif
+//#if SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR < 11
+//#include <SetCollisionGroup> //is included in sourcemod with 1.11
+//#endif
 
-#define PLUGIN_VERSION "22w24a"
+#define PLUGIN_VERSION "22w41a"
 
 public Plugin myinfo = {
 	name = "Slap and Bury",
@@ -15,6 +15,8 @@ public Plugin myinfo = {
 	version = PLUGIN_VERSION,
 	url = "N/A"
 }
+
+ArrayList slapSounds;
 
 enum struct BuryData {
 	bool IsBuried;
@@ -65,12 +67,12 @@ methodmap Player {
 		}
 		delete hdlTrace;
 		//actually bury them already
-		buryPos[2] -= 30; //in floor
+		buryPos[2] -= 30.0; //in floor
 		SetEntityMoveType(this.Client, MOVETYPE_NONE);
-		SetEntityCollisionGroup(this.Client, 0);
+//		SetEntityCollisionGroup(this.Client, 0);
 		float zeros[3];
 		TeleportEntity(this.Client, buryPos, NULL_VECTOR, zeros);
-		if (buryParent) {
+		if (buryParent>0) {
 			SetVariantString("!activator");
 			AcceptEntityInput(this.Client, "SetParent", buryParent, -1, 0);
 		}
@@ -90,7 +92,7 @@ methodmap Player {
 		GetClientAbsOrigin(this.Client, pos);
 		pos[2] += g_bury[this.Client].BuryDistance + 4;
 		TeleportEntity(this.Client, pos, NULL_VECTOR, NULL_VECTOR);
-		SetEntityCollisionGroup(this.Client, g_bury[this.Client].PreCollisionGroup);
+//		SetEntityCollisionGroup(this.Client, g_bury[this.Client].PreCollisionGroup);
 		SetEntityMoveType(this.Client, g_bury[this.Client].PreMoveType);
 		g_bury[this.Client].IsBuried = false;
 		if (playSound) {
@@ -104,7 +106,7 @@ methodmap Player {
 	}
 	public void Reset() {
 		if (g_bury[this.Client].IsBuried) {
-			SetEntityCollisionGroup(this.Client, g_bury[this.Client].PreCollisionGroup);
+//			SetEntityCollisionGroup(this.Client, g_bury[this.Client].PreCollisionGroup);
 			SetEntityMoveType(this.Client, g_bury[this.Client].PreMoveType);
 			int inent = EntRefToEntIndex(g_bury[this.Client].InEntityRef);
 			if (inent != INVALID_ENT_REFERENCE && this.IsValid(true,false) && GetEntPropEnt(this.Client, Prop_Send, "moveparent") == inent) {
@@ -124,19 +126,41 @@ public void OnPluginStart() {
 	
 	RegAdminCmd("sm_bury", Command_Bury, ADMFLAG_SLAY, "Usage: sm_bury <targets> - Bury a player in the ground, imobalizing them");
 	RegAdminCmd("sm_unbury", Command_Unbury, ADMFLAG_SLAY, "Usage: sm_unbury <targets> - Bury a player in the ground, imobalizing them");
-	RegAdminCmd("sm_rslap", Command_RSlap, ADMFLAG_SLAY, "Usage: sm_rslap <targets> [repeats=1] [delay=0.2] [damage=0] - Slap a player multiple times, delay is 0.02..0.5");
+	RegAdminCmd("sm_rslap", Command_RSlap, ADMFLAG_SLAY, "Usage: sm_rslap <targets> [repeats=1] [delay=0.2] [damage=0] [force=1] - Slap a player multiple times, delay is 0.02..0.5, force is a multiplier");
 	
 	AddCommandListener(Command_Kill, "kill")
 	
 	HookEvent("player_death", OnClientDeathPost);
 	HookEvent("teamplay_round_start", OnMapEntitiesRefreshed);
 	HookEvent("teamplay_restart_round", OnMapEntitiesRefreshed);
+
+	if (slapSounds == null) {
+		slapSounds = new ArrayList(ByteCountToCells(PLATFORM_MAX_PATH));
+
+		GameData data = new GameData("sdktools.games\\common.games");
+		int amount;
+		char value[PLATFORM_MAX_PATH];
+		data.GetKeyValue("SlapSoundCount", value, sizeof(value));
+		amount = StringToInt(value);
+		for (int i=1; i<=amount; i++) {
+			Format(value, sizeof(value), "SlapSound%i", i);
+			if (data.GetKeyValue(value, value, sizeof(value))) {
+				slapSounds.PushString(value);
+			}
+		}
+		delete data;
+	}
 }
 
 public void OnMapStart() {
 	PrecacheSound("physics/body/body_medium_break2.wav");
 	PrecacheSound("physics/body/body_medium_break3.wav");
 	PrecacheSound("physics/body/body_medium_break4.wav");
+	char sound[PLATFORM_MAX_PATH];
+	for (int i=slapSounds.Length-1; i>=0; i--) {
+		slapSounds.GetString(i, sound, sizeof(sound));
+		PrecacheSound(sound);
+	}
 }
 
 public void OnPluginEnd() {
@@ -233,7 +257,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 public Action Command_RSlap(int client, int args) {
 	if (!args) {
-		ReplyToCommand(client, "Usage: sm_rslap <targets> [repeats=1] [delay=0.2] [damage=0]");
+		ReplyToCommand(client, "Usage: sm_rslap <targets> [repeats=1] [delay=0.2] [damage=0] [force=1]");
 		return Plugin_Handled;
 	}
 	char pattern[128];
@@ -247,7 +271,7 @@ public Action Command_RSlap(int client, int args) {
 		return Plugin_Handled;
 	}
 	int repeats=1, damage=0;
-	float delay=0.2;
+	float delay=0.2, force=1.0;
 	if (args>=2) {
 		GetCmdArg(2, pattern, sizeof(pattern));
 		if (StringToIntEx(pattern, repeats)!=strlen(pattern) || repeats < 1) {
@@ -257,20 +281,28 @@ public Action Command_RSlap(int client, int args) {
 	}
 	if (args>=3) {
 		GetCmdArg(3, pattern, sizeof(pattern));
-		if (StringToFloatEx(pattern, delay)!=strlen(pattern) || !(0.02<=delay<=0.5)) {
+		if (StringToFloatEx(pattern, delay)!=strlen(pattern) || (!(0.02<=delay<=0.5) && repeats > 1)) {
 			ReplyToCommand(client, "Delay has to be between 0.02 .. 0.5");
 			return Plugin_Handled;
 		}
 	}
 	if (args>=4) {
 		GetCmdArg(4, pattern, sizeof(pattern));
-		if (StringToIntEx(pattern, damage)!=strlen(pattern) || damage < 0) {
-			ReplyToCommand(client, "Damage has to be positive or zero integer");
+		if (StringToIntEx(pattern, damage)!=strlen(pattern)) {
+			ReplyToCommand(client, "Damage has to be integer");
+			return Plugin_Handled;
+		}
+	}
+	if (args>=5) {
+		GetCmdArg(5, pattern, sizeof(pattern));
+		if (StringToFloatEx(pattern, force)!=strlen(pattern) || force < 0.0) {
+			ReplyToCommand(client, "Force has to be positive or zero decimal");
 			return Plugin_Handled;
 		}
 	}
 	DataPack slapData = new DataPack();
 	slapData.WriteCell(damage);
+	slapData.WriteCell(force);
 	slapData.WriteCell(result);
 	for (int i=0;i<result;i++) {
 		slapData.WriteCell(GetClientUserId(targets[i]));
@@ -320,9 +352,13 @@ public void OnClientDisconnect(int client) {
 
 public Action Timer_RSlap(Handle timer, DataPack data) {
 	data.Reset();
+	//read const data fomr pack
 	int damage = data.ReadCell();
+	float force = data.ReadCell();
+	//read player list / volatile data
 	int targets[MAXPLAYERS];
 	int numtargets;
+	DataPackPos adjust = data.Position;
 	for (int i=data.ReadCell(); i>0; i-=1) {
 		int client = GetClientOfUserId(data.ReadCell());
 		if (Player(client).IsValid()) {
@@ -331,15 +367,47 @@ public Action Timer_RSlap(Handle timer, DataPack data) {
 		}
 	}
 	int repeats = data.ReadCell()-1;
-	
-	data.Reset(true);
-	data.WriteCell(damage);
+	//rewrite a cleaned up list
+	data.Position = adjust;
 	data.WriteCell(numtargets);
-	for (int i=0; i<numtargets; i+=1) {
-		SlapPlayer(targets[i], damage);
+	for (int i=0; i<numtargets; i++) {
 		data.WriteCell(GetClientUserId(targets[i]));
 	}
 	data.WriteCell(repeats);
-	
+	//SLAP
+	SlapPlayersEx(targets, numtargets, damage, force);
+	//continue?
 	return (repeats>0 && numtargets>0) ? Plugin_Continue : Plugin_Stop;
+}
+
+//reimplementing SlapPlayer to allow force scale
+static void SlapPlayersEx(const int[] clients, int numClients, int damage=5, float force=1.0) {
+	for (int i=0; i<numClients; i+=1) {
+		int client = clients[i];
+		if (!Player(client).IsValid()) continue;
+		bool slay;
+		if (damage!=0) {
+			int newHealth = GetClientHealth(client) - damage;
+			if (newHealth < 0) { newHealth = 1; slay = true; }
+			SetEntityHealth(client, newHealth);
+		}
+		float vel[3], push[3];
+		GetEntPropVector(client, Prop_Data, "m_vecAbsVelocity", vel);
+		push[0] = GetRandomFloat(50.0,230.0) * (GetRandomInt(0,1)?-1:1);
+		push[1] = GetRandomFloat(50.0,230.0) * (GetRandomInt(0,1)?-1:1);
+		push[2] = GetRandomFloat(100.0,300.0);
+		ScaleVector(push,force);
+		AddVectors(vel,push,vel);
+		TeleportEntity(client,NULL_VECTOR,NULL_VECTOR,vel);
+
+		if (slapSounds.Length) {
+			int at = GetRandomInt(0, slapSounds.Length-1);
+			char sound[PLATFORM_MAX_PATH];
+			slapSounds.GetString(at, sound, sizeof(sound));
+			EmitSoundToAll(sound, client);
+		}
+
+		//original tries to prevent scoreboard changes, idc
+		if (slay) ForcePlayerSuicide(client);
+	}
 }

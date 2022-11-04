@@ -8,7 +8,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w38a"
+#define PLUGIN_VERSION "22w44a"
 
 public Plugin myinfo = {
 	name = "Quick Tracks",
@@ -348,7 +348,10 @@ public void TF2_OnConditionAdded(int client, TFCond condition) {
 			     31160, //texas truckin
 			     31203, //mannbulance
 			     1172, //victory lap
-			     30672: //zoomin' broom
+			     30672, //zoomin' broom
+			     31290, //travel agent 
+			     31291, //drunk man's cannon
+			     31292: //shanty shipmate
 			{
 				clientVehicleTaunting[client] = true;
 			}
@@ -604,6 +607,8 @@ public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
 }
 void HandleClientDeath(int client) {
 	if (clientAttempts[client].track != INVALID_TRACK) {
+		clientVehicleTaunting[client] = false;
+		clientIsAirborn[client] = false;
 		Track track;
 		track.FetchSelf(clientAttempts[client].track);
 		PrintToChat(client, "[QT] Your attempt at \"%s\" was cancelled", track.name);
@@ -1310,9 +1315,9 @@ void SaveTracks() {
 		if (!track.open || track.zones.Length == 0) continue;
 		count++;
 		
-		kv.JumpToKey(track.name, true);
+		kv.JumpToKey(track.name, true); {
 			kv.SetNum("laps", track.laps);
-			kv.JumpToKey("rules", true);
+			kv.JumpToKey("rules", true); {
 				buffer[0]=0;
 				for (int c=0;c<9;c++) {
 					if ((track.rules & RULE_CLASS(c))) {
@@ -1327,19 +1332,19 @@ void SaveTracks() {
 				kv.SetNum("vehicle_only", (track.rules & RULE_VEHICLEONLY)!=0);
 				kv.SetNum("dont_jump", (track.rules & RULE_DONTJUMP)!=0);
 				kv.SetNum("dont_land", (track.rules & RULE_DONTLAND)!=0);
-			kv.GoBack();
-			kv.JumpToKey("zones", true);
-			for (int z=0;z<track.zones.Length;z++) {
-				track.zones.GetArray(z,zone);
-				
-				Format(buffer,sizeof(buffer),"%d",(z+1));
-				kv.JumpToKey(buffer, true);
-					kv.SetVector("low", zone.mins);
-					kv.SetVector("high", zone.maxs);
-				kv.GoBack();
-			}
-			kv.GoBack();
-		kv.GoBack();
+			} kv.GoBack();
+			kv.JumpToKey("zones", true); {
+				for (int z=0;z<track.zones.Length;z++) {
+					track.zones.GetArray(z,zone);
+					
+					Format(buffer,sizeof(buffer),"%d",(z+1));
+					kv.JumpToKey(buffer, true); {
+						kv.SetVector("low", zone.mins);
+						kv.SetVector("high", zone.maxs);
+					} kv.GoBack();
+				}
+			} kv.GoBack();
+		} kv.GoBack();
 	}
 	
 	Format(buffer, sizeof(buffer), "cfg/tracks/%s.cfg", mapname);
