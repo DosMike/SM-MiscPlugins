@@ -19,6 +19,8 @@ Currently adds the following:
 * mp_instagib 0 - Set to 1 to enable 1-hit kills for everything
 * tf_medic_health_regen 1.0 - Can be used to scale the medics base health regen rate. If below 0.5 the blutsauger will start to drain health.
 
+This plugin requires [TF2 RegenThink Hook](https://github.com/DosMike/TF2-RegenThinkHook), [TF2 attributes](https://github.com/FlaminSarge/tf2attributes) and [TF2 Utils](https://github.com/nosoop/SM-TFUtils/)
+
 ## [TF2/MvM] AutoReady
 Basically a re-write of [avi9526's AutoReady](https://forums.alliedmods.net/showthread.php?t=223141).
 If there are a hand full of players in your MvM server and one player is afk or something this plugin can auto ready them.
