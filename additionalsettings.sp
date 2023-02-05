@@ -6,12 +6,12 @@
 
 #include <tf2utils>
 #include <tf2attributes>
-#include <tf2rth>
+#include <tf2regenthinkhook>
 
 #pragma newdecls required
 #pragma semicolon 1
 
-#define VERSION        "22w44a"
+#define VERSION        "23w04a"
 
 #define TRI_IGNORE 0
 #define TRI_REQUIRE 1
@@ -51,10 +51,10 @@ public void ConVarVersionLocked(ConVar convar, const char[] oldValue, const char
 }
 //boilerplate end
 
-enum OptionState (+=1) {
-	STATE_UNCHANGED,
-	STATE_ENABLED,
-	STATE_DISABLED
+enum OptionState {
+	STATE_UNCHANGED = 0,
+	STATE_ENABLED = 1,
+	STATE_DISABLED = 2
 }
 bool GetOptionState(OptionState optionValue, bool defaultValue) {
 	switch(optionValue) {
@@ -68,20 +68,16 @@ OptionState sBackstabs = STATE_UNCHANGED;
 #define GET_BACKSTABS GetOptionState(sBackstabs, true)
 OptionState sInstagib = STATE_UNCHANGED;
 #define GET_INSTAGIB GetOptionState(sInstagib, true)
-float fMedicRegen = 1.0;
 
 //convars and settup begin
 public void OnPluginStart() {
 	ConVar cvBackstabs = CreateConVar( "tf_backstabs", "1", "Set if spies can backstab. 1 allow, 0 disallow", _, true, 0.0, true, 1.0 );
 	ConVar cvInstagib = CreateConVar( "mp_instagib", "0", "Enable insta-gib. 1 enable, 0 disable", _, true, 0.0, true, 1.0 );
-	ConVar cvMedicRegen = CreateConVar( "tf_medic_health_regen", "1.0", "Scale the health regen rate for medics", _, true, 0.0 );
 	AutoExecConfig();
 	LoadAndHookConVar(cvBackstabs, OnConVarChanged_Backstabs);
 	LoadAndHookConVar(cvInstagib, OnConVarChanged_Instagib);
-	LoadAndHookConVar(cvMedicRegen, OnConVarChanged_MedicRegen);
 	delete cvBackstabs;
 	delete cvInstagib;
-	delete cvMedicRegen;
 	
 	ConVar version = CreateConVar( "additionalsettings_version", VERSION, "Additional Settings Version", FCVAR_NOTIFY|FCVAR_DONTRECORD );
 	LoadAndHookConVar(version, ConVarVersionLocked);
@@ -104,10 +100,6 @@ public void OnConVarChanged_Instagib(ConVar convar, const char[] oldValue, const
 	else if (StrEqual(newValue, "0")) sInstagib = STATE_DISABLED;
 	else sInstagib = STATE_UNCHANGED;
 	PrintToChatAll("[SM] Instagib is now %s", GET_INSTAGIB ? "On" : "Off");
-}
-public void OnConVarChanged_MedicRegen(ConVar convar, const char[] oldValue, const char[] newValue) {
-	fMedicRegen = convar.FloatValue;
-	PrintToChatAll("[SM] Medic health regen multiplier is now %f", fMedicRegen);
 }
 //convars and settup end
 
@@ -154,14 +146,6 @@ Action OnClientTakeDamage(int victim, int &attacker, int &inflictor, float &dama
 //function implementation end
 
 //utility functions begin
-public Action TF2_OnClientRegenThinkHealth(int client, float& regenClass, float& regenAttribs) {
-	if (fMedicRegen != 1.0 && TF2_GetPlayerClass(client)==TFClass_Medic) {
-		regenClass *= fMedicRegen;
-		return Plugin_Changed;
-	}
-	return Plugin_Continue;
-}
-
 /**
  * @param boss - 1 to require boss bots, -1 to filter boss bots, 0 to ignore. use TRI_* for readability
  */
