@@ -8,7 +8,7 @@ auth github %{GITHUB_TOKEN}
 #  slapandbury
 # the include directory for this is, uhm... it has an extra s. I should probably pr this?
 dependency github ashort96/SetCollisionGroup master-SNAPSHOT
-move spcache/addons/sourcemod/scripting/includes : spcache/addons/sourcemod/scripting/include
+move ${SPSCACHE}/addons/sourcemod/scripting/includes : ${SPSCACHE}/addons/sourcemod/scripting/include replace any
 # lots of features, but kinda broken (i should probably phase it out)
 dependency github bcserv/smlib transitional_syntax-SNAPSHOT
 # additional settings require the RegenThink hook
