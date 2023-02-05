@@ -5,10 +5,11 @@ Table Of Content
 * [[TF2] Additional Settings](#TF2-Additional-Settings)
 * [[TF2/MvM] AutoReady](#TF2MvM-AutoReady)
 * [[ANY] Map Props](#ANY-Map-Props)
+* [[TF2] QuickTrack](#TF2-QuickTrack)
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
+* [[ANY] SmartEdictOverflow](#ANY-SmartEdictOverflow)
 * [[TF2] TDM Tickets](#TF2-TDM-Tickets)
 * [[ANY] TP Ask](#ANY-TP-Ask)
-* [[TF2] QuickTrack](#TF2-QuickTrack)
 
 ## [TF2] Additional Settings
 
@@ -56,10 +57,41 @@ Commands are as follows (These have the permission ADMFLAG_GENERIC):
 * sm_propmodel [ref] - returns the model path for the ref or aimed prop
 * sm_colorprop &lt;r> &lt;g> &lt;b> [a] - colors a prop. r, g, b go from 0 to 255, a is optional with a min of 50
 
+## [TF2] QuickTrack
+Allows servermods to quickly set up race tracks around maps with checkpoints, similar to bhop/surf timers.
+The setup is done entirely through VGUI menus and player positioning.
+Checkpoints within a track have to be visited in sequence for the attempt to progress, best times get a shoutout.
+
+Saving tracks will write all open tracks with zones into a config file in tf/cfg/tracks/ named after the map.
+The file is reloaded at map start, but can manually be reloaded at any point.
+
+Commands:
+* sm_edittrack [track] - Open the track editor for the track (ADMFLAG_GENERIC)
+* sm_tracktop [track] - Open the top-scores for the current track, or the specified track
+* sm_stoptrack - End the track a player is currently on
+
 ## [ANY] SlapAndBury
 Three command for admins with the SLAY flag:
 * sm_bury <target> / sm_unbury <target> - force players stuck into the ground.
 * sm_rslap <target> [repeats] [delay] [damage] - use this instead of spamming your sm_slap bind or mashing up,enter in console
+
+## [ANY] SmartEdictOverflow
+A plugin that tries to keep your server alive just a little bit longer before it has to reset the map (or whatever you low edict action is).
+Amout the limit: SEOP tries to be smart and counts edicts at the start of the map for a dynamic limit. If you specify a limit smaller than
+the dynamic limit, it will pick the dynamic limit over your value to ensure gameplay is possible. If you still run into the edict limit at
+that point, you probably got other problems. For this reason SEOP also does not really support reloading (the initial edict count will be off).
+
+ConVars:
+* `seop_edictlimit 2000` - When to start acting
+* `seop_edictaction 2` - What to do over the limit: 0 = block spawning new stuff, 1 = try to delete old stuff, 2 = both
+* `seop_edictlimitwarn 1950` - Start warning people when more that this amount of edicts is around (+overlay)
+* `seop_edictlimitwarn_hudflags *` - Admin flag required to see get the overlay showed automatically (over warn limit)
+* `seop_edictsperplayer 11` - How many edicts to guesstimate for every player in the dynamic limit
+
+Commands:
+* `seop_info` - Dump some stats into the console
+* `seop_track` - Manually toggle the info overlay
+
 
 ## [TF2] TDM Tickets
 A small plugin for TF2 servers that implements a battlefield like ticket system for team deathmatch.
@@ -81,16 +113,3 @@ Asking a player will prompt them to `/tpaccept` or `/tpdeny` the request. If the
 
 After a teleport was accepted there's a warmup of `sm_tpa_warmup` seconds for the teleporting player. If they move of get hurt during this warmup, the teleport is interruped.
 Otherwise the teleport takes place and the player is on a cooldown of `sm_tpa_cooldown` seconds before being able to teleport again. The config is written to `cfg/sourcemod/plugin.tpask.cfg`.
-
-## [TF2] QuickTrack
-Allows servermods to quickly set up race tracks around maps with checkpoints, similar to bhop/surf timers.
-The setup is done entirely through VGUI menus and player positioning.
-Checkpoints within a track have to be visited in sequence for the attempt to progress, best times get a shoutout.
-
-Saving tracks will write all open tracks with zones into a config file in tf/cfg/tracks/ named after the map.
-The file is reloaded at map start, but can manually be reloaded at any point.
-
-Commands:
-* sm_edittrack [track] - Open the track editor for the track (ADMFLAG_GENERIC)
-* sm_tracktop [track] - Open the top-scores for the current track, or the specified track
-* sm_stoptrack - End the track a player is currently on
