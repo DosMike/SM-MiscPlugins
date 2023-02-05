@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "23w01a"
+#define PLUGIN_VERSION "23w05a"
 
 public Plugin myinfo = {
 	name = "MapProps",

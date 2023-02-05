@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION "23w01a"
+#define PLUGIN_VERSION "23w05a"
 #include <sdktools>
 #include <sdkhooks>
 #include <entity>
