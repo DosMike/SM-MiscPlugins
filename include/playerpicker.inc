@@ -187,6 +187,7 @@ public int __OnClientPickMenuHandler(Menu menu, MenuAction action, int param1, i
 	} else if (action == MenuAction_End) {
 		delete menu;
 	}
+	return 0;
 }
 
 //as we're a header, reset for legacy headers that might come after us

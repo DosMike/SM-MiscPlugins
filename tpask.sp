@@ -10,7 +10,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "22w27a"
+#define PLUGIN_VERSION "23w03a"
 
 public Plugin myinfo = {
 	name = "TP Ask",
@@ -20,7 +20,7 @@ public Plugin myinfo = {
 	url = "http://forums.alliedmods.net"
 };
 
-enum (<<=1) {
+enum {
 	REQ_NONE = 0,
 	REQ_GOTO = 1,
 	REQ_BRING = 2,
@@ -107,7 +107,7 @@ public void ConVarVersionLock(ConVar convar, const char[] oldValue, const char[]
 public Action Command_TPAsk(int client, int args) {
 	char buffer[MAX_TARGET_LENGTH];
 	GetCmdArg(0, buffer, sizeof(buffer));
-	bool reverse = StrContains(buffer, "here", false) >= 0;
+	bool reverse = StrContains(buffer, "here", false) >= 0 || StrContains(buffer, "bring", false) >= 0;
 	
 	GetCmdArgString(buffer, sizeof(buffer));
 	TrimString(buffer);
@@ -176,12 +176,6 @@ public void OnClientDisconnect(int client) {
 	OnClientConnected(client);
 }
 
-public void OnGameFrame() {
-	for (int client=1; client <= MaxClients; client += 1) {
-		if (!IsClientInGame(client) || IsFakeClient(client)) continue;
-		CheckPlayerWarmup(client);
-	}
-}
 void CheckPlayerWarmup(int client) {
 	if (!IsRequestSensitive(client)) return;
 	
@@ -227,7 +221,7 @@ bool RequestTeleport(int client, int target, bool bring) {
 		PrintToChat(client, "[SM] %N already has a pending teleport request", target);
 		return false;
 	}
-	if (g_requests[client].timeout != INVALID_HANDLE || GetClientTime(client) < g_requests[client].nextRequest) {
+	if (g_requests[client].timeout != INVALID_HANDLE || (!IsFakeClient(client) && GetClientTime(client) < g_requests[client].nextRequest)) {
 		PrintToChat(client, "[SM] You can't request another teleport yet", target);
 		return false;
 	}
@@ -299,6 +293,8 @@ public Action Timer_Teleport(Handle timer, any userid) {
 	if (!GetRequestClients(target, moveme, tohere)) return Plugin_Stop;
 	int requester = target == moveme ? tohere : moveme; //requester is the one of <moveme,tohere> that is not target
 	
+	CheckPlayerWarmup(moveme); //teleporting client should stop moving before tp
+	
 	float pos[3];
 	if (!FindSaveTPLocationAround(tohere, pos, moveme)) {
 #if PLAYSOUNDS
@@ -335,7 +331,8 @@ public Action Timer_Teleport(Handle timer, any userid) {
 		}
 #endif
 		TeleportEntity(moveme, pos, NULL_VECTOR, NULL_VECTOR);
-		g_requests[requester].nextRequest = GetClientTime(requester) + g_cooldown.FloatValue;
+		if (!IsFakeClient(requester))
+			g_requests[requester].nextRequest = GetClientTime(requester) + g_cooldown.FloatValue;
 	}
 	//done
 	g_requests[target].flags &=~ (REQ_PENDING|REQ_GOTO|REQ_BRING);
@@ -354,12 +351,12 @@ bool FindSaveTPLocationAround(int client, float location[3], int tomove) {
 	//compute distance from client to not get stuck
 	float swidth = FMax(mmaxs[0]-mmins[0], mmaxs[1]-mmins[1]) +
 	               FMax(tmaxs[0]-tmins[0], tmaxs[1]-tmins[1]) + 
-	               2.0; //safety
+	               3.0; //safety
 	swidth /= 2.0; //half for center-center distance
 	
 	//try all 4 cardianl directions, starting with the one closest to where client is looking
 	GetClientAbsAngles(client, aux);
-	float yaw = IWrapValue(RoundToNearest( aux[0] / 360.0 ), -2, 2) * 90.0;
+	float yaw = IWrapValue(RoundToNearest( aux[1] / 360.0 ), -2, 2) * 3.141592 / 2.0; //to 90deg|.5pi steps
 	for (int dir=0; dir<4; dir+=1) {
 		aux[0] = Cosine(yaw) * swidth;
 		aux[1] = Sine(yaw) * swidth;
@@ -369,11 +366,11 @@ bool FindSaveTPLocationAround(int client, float location[3], int tomove) {
 			location = aux;
 			return true;
 		}
-		yaw = FWrapValue(yaw+90.0, -180.0, 180.0);
+		yaw = FWrapValue(yaw + 3.141592/2.0, -3.141592, 3.141592);
 	}
 	
 	//try above the player?
-	pos[2] += tmaxs[2];
+	pos[2] += tmaxs[2] + 3.0;
 	if (TraceFreeSpace(pos, mmins, mmaxs)) {
 		location = pos;
 		return true;
@@ -389,7 +386,7 @@ bool TraceFreeSpace(float pos[3], const float mins[3], const float maxs[3]) {
 	end = pos;
 	//we could handle a entity filter, but i can't think of anything to filter for
 	TR_TraceHull(start, end, mins, maxs, MASK_PLAYERSOLID);
-	return !TR_DidHit();
+	return !TR_DidHit() || TR_GetEntityIndex()==-1;
 }
 float FMax(float a, float b) {
 	return a>b?a:b;
@@ -466,3 +463,10 @@ void CancelTimer(Handle& timer) {
 	if (timer != INVALID_HANDLE) KillTimer(timer);
 	timer = INVALID_HANDLE;
 }
+
+//void TraceLine(int client, float a[3], float b[3], int color[4]) {
+//	static int g_iLaserBeam = -1;
+//	if (g_iLaserBeam<0) g_iLaserBeam = PrecacheModel("materials/sprites/laserbeam.vmt");
+//	TE_SetupBeamPoints(a, b, g_iLaserBeam, 0, 0, 1, 1.0, 2.0, 2.0, 0, 0.0, color, 0);
+//	TE_SendToClient(client);
+//}
