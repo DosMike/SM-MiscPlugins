@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w21c"
+#define PLUGIN_VERSION "23w01a"
 
 public Plugin myinfo = {
 	name = "MapProps",
@@ -206,7 +206,7 @@ public void OnPluginEnd() {
 	for (int i=g_mapProps.Length-1; i>=0; i--) {
 		int entity = EntRefToEntIndex(g_mapProps.Get(i,LocalPropData::entref));
 		if (entity != INVALID_ENT_REFERENCE) {
-			RemoveEntity(entity);
+			AcceptEntityInput(entity, "Kill");
 		}
 	}
 	g_mapProps.Clear();
@@ -216,6 +216,7 @@ public void OnPluginEnd() {
 Action OnRoundStart(Event event, const char[] name, bool dontBroadcast) {
 	if (event.GetBool("full_reset"))
 		LoadProps();
+	return Plugin_Continue;
 }
 
 public void OnClientAuthorized(int client, const char[] auth) {
@@ -258,7 +259,7 @@ Action Command_DeleteProp(int client, int args) {
 		g_mapProps.Erase(index);
 	}
 	int ref = EntIndexToEntRef(entity);// for printing
-	RemoveEdict(entity);
+	AcceptEntityInput(entity, "Kill");
 	ReplyToCommand(client, "[SM] Deleted prop ref %08X", ref);
 	return Plugin_Handled;
 }
@@ -279,9 +280,9 @@ Action Command_DeleteProp2(int client, int args) {
 		deleted = DeleteAllPropsBySteamId(buffer);
 		int target = GetClientBySteamId(buffer);
 		if (target)
-			ReplyToCommand(client, "[SM] Deleted %i props for %N (%s)...", deleted, target, buffer);
+			ReplyToCommand(client, "[SM] Deleted %i props (cache+map) for %N (%s)...", deleted, target, buffer);
 		else
-			ReplyToCommand(client, "[SM] Deleted %i props for SteamID '%s'...", deleted, buffer);
+			ReplyToCommand(client, "[SM] Deleted %i props (cache+map) for SteamID '%s'...", deleted, buffer);
 	} else {
 		int targets[MAXPLAYERS];
 		bool tn_is_ml;
@@ -297,9 +298,9 @@ Action Command_DeleteProp2(int client, int args) {
 			deleted += DeleteAllPropsBySteamId(buffer);
 		}
 		if (tn_is_ml) {
-			ReplyToCommand(client, "[SM] Deleted %i props for %t...", deleted, tname);
+			ReplyToCommand(client, "[SM] Deleted %i props (cache+map) for %t", deleted, tname);
 		} else {
-			ReplyToCommand(client, "[SM] Deleted %i props for %s...", deleted, tname);
+			ReplyToCommand(client, "[SM] Deleted %i props (cache+map) for %s", deleted, tname);
 		}
 	}
 	return Plugin_Handled;
@@ -657,7 +658,7 @@ int DeleteAllPropsBySteamId(const char[] steamid) {
 		g_mapProps.Erase(p);
 		int entity = EntRefToEntIndex(local.entref);
 		if (entity != INVALID_ENT_REFERENCE)
-			RemoveEdict(entity);
+			AcceptEntityInput(entity, "Kill");
 		deleted += 1;
 	}
 	return deleted;
@@ -670,6 +671,5 @@ bool CheckEdictLimit() {
 	// and we don't want to run into the lowedict action
 	// so subtract some small value
 	space -= ( g_iEdictBuffer + 12 );
-	PrintToServer("Edict headroom: %i", space);
 	return space > 0;
 }
