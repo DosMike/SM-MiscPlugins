@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "23w05a"
+#define PLUGIN_VERSION "23w07a"
 
 public Plugin myinfo = {
 	name = "MapProps",
@@ -28,7 +28,8 @@ int g_iEdictBuffer;
 
 enum struct LocalPropData {
 	char model[PLATFORM_MAX_PATH];
-	char owner[64]; //steamid
+	int skin;
+	char owner[32]; //steamid
 	float origin[3];
 	float rotation[3];
 	int color[4];
@@ -44,11 +45,12 @@ enum struct LocalPropData {
 			Entity_GetAbsOrigin(entity, this.origin);
 			Entity_GetAbsAngles(entity, this.rotation);
 			Entity_GetRenderColor(entity, this.color);
+			this.skin = GetEntProp(entity, Prop_Send, "m_nSkin");
 		}
 		//push to database
 		char buffer[1024];
-		g_db.Format(buffer, sizeof(buffer), "INSERT INTO mapprops (map, model, owner, posx, posy, posz, pitch, yaw, roll, color) VALUES ('%s', '%s', '%s', %f, %f, %f, %f, %f, %f, %i)",
-			g_currentMapName, this.model, this.owner, this.origin[0], this.origin[1], this.origin[2], this.rotation[0], this.rotation[1], this.rotation[2], ColorToInt(this.color));
+		g_db.Format(buffer, sizeof(buffer), "INSERT INTO mapprops (map, model, owner, posx, posy, posz, pitch, yaw, roll, color) VALUES ('%s', '%s:%i', '%s', %f, %f, %f, %f, %f, %f, %i)",
+			g_currentMapName, this.model, this.skin, this.owner, this.origin[0], this.origin[1], this.origin[2], this.rotation[0], this.rotation[1], this.rotation[2], ColorToInt(this.color));
 		SQL_FastAsync(buffer);
 		this.saved = true;
 	}
@@ -85,7 +87,7 @@ enum struct LocalPropData {
 				}
 			}
 			if (!entity) {
-				entity = SpawnOwnedPropAt(this.model, this.owner, this.origin, this.rotation, this.physics, useIndex);
+				entity = SpawnOwnedPropAt(this.model, this.owner, this.origin, this.rotation, this.physics, this.skin, useIndex);
 				if (entity != INVALID_ENT_REFERENCE) {
 					SetEntityRenderMode(entity, this.color[3]==255?RENDER_NORMAL:RENDER_TRANSCOLOR);
 					Entity_SetRenderColor(entity, this.color[0], this.color[1], this.color[2], this.color[3]);
@@ -98,8 +100,8 @@ enum struct LocalPropData {
 	void DropAsync() {
 		if (!this.saved) return; //not saved
 		char buffer[1024];
-		g_db.Format(buffer, sizeof(buffer), "DELETE FROM mapprops WHERE map='%s' AND model='%s' AND owner='%s' AND ABS(posx - %f)<1.0 AND ABS(posy - %f)<1.0 AND ABS(posz - %f)<1.0 AND ABS(pitch - %f)<1.0 AND ABS(yaw - %f)<1.0 AND ABS(roll - %f)<1.0",
-			g_currentMapName, this.model, this.owner, this.origin[0], this.origin[1], this.origin[2], this.rotation[0], this.rotation[1], this.rotation[2]);
+		g_db.Format(buffer, sizeof(buffer), "DELETE FROM mapprops WHERE map='%s' AND model='%s:%i' AND owner='%s' AND ABS(posx - %f)<1.0 AND ABS(posy - %f)<1.0 AND ABS(posz - %f)<1.0 AND ABS(pitch - %f)<1.0 AND ABS(yaw - %f)<1.0 AND ABS(roll - %f)<1.0",
+			g_currentMapName, this.model, this.skin, this.owner, this.origin[0], this.origin[1], this.origin[2], this.rotation[0], this.rotation[1], this.rotation[2]);
 		SQL_FastAsync(buffer);
 		this.saved = false;
 	}
@@ -111,6 +113,7 @@ enum struct LocalPropData {
 			if (this.saved) this.DropAsync();
 			return false;
 		}
+		int skin = GetEntProp(entity, Prop_Send, "m_nSkin");
 		Entity_GetAbsOrigin(entity, origin);
 		Entity_GetAbsAngles(entity, angles);
 		Entity_GetRenderColor(entity, color);
@@ -125,12 +128,13 @@ enum struct LocalPropData {
 				if (d>0.5) {doupdate=true;break;}
 				if (this.color[i]!=color[i]) {doupdate=true;break;}
 			}
-			if (doupdate || this.color[3]!=color[3]) { //alpha channel is not checked in loop
+			if (doupdate || this.color[3]!=color[3] || this.skin!=skin) { //alpha channel is not checked in loop
 				this.DropAsync();
 				this.SaveAsync();
 				if (selfIndex>=0) g_mapProps.SetArray(selfIndex, this);
 			}
 		} else {
+			this.skin = skin;
 			this.origin = origin;
 			this.rotation = angles;
 			this.color = color;
@@ -146,6 +150,7 @@ enum struct LocalPropData {
 		else if (StrContains(classname, "prop_dynamic")==0) this.physics = false;
 		else return false;
 		Entity_GetModel(entity, this.model, sizeof(LocalPropData::model));
+		this.skin = GetEntProp(entity, Prop_Send, "m_nSkin");
 		strcopy(this.owner, sizeof(LocalPropData::owner), g_clientSteamId[owner]);
 		Entity_GetAbsOrigin(entity, this.origin);
 		Entity_GetAbsAngles(entity, this.rotation);
@@ -159,8 +164,8 @@ enum struct LocalPropData {
 public void OnPluginStart() {
 	LoadTranslations("common.phrases");
 	
-	RegAdminCmd("sm_spawnprop", Command_SpawnProp, PERM_MOD, "<modelpath> - Spawns a prop with the given model in front of you");
-	RegAdminCmd("sm_spawnphys", Command_SpawnProp, PERM_MOD, "<modelpath> - Spawns a prop with the given model in front of you");
+	RegAdminCmd("sm_spawnprop", Command_SpawnProp, PERM_MOD, "<modelpath> [Skin] - Spawns a prop with the given model in front of you");
+	RegAdminCmd("sm_spawnphys", Command_SpawnProp, PERM_MOD, "<modelpath> [Skin] - Spawns a prop with the given model in front of you");
 	RegAdminCmd("sm_deleteprop", Command_DeleteProp, PERM_MOD, "[entRef] - Deletes the prop looking at");
 	RegAdminCmd("sm_deletepropsby", Command_DeleteProp2, PERM_MOD, "<SteamID2|UserID|Target> - Deletes all props by the specified owner");
 	RegAdminCmd("sm_freezeprop", Command_FreezeProp, PERM_MOD, "Freezes the prop looking at");
@@ -172,6 +177,7 @@ public void OnPluginStart() {
 	RegAdminCmd("sm_propowner", Command_PropInfo, PERM_MOD, "Gets who spawned prop looking at in case of furniture");
 	RegAdminCmd("sm_propmodel", Command_PropModel, PERM_MOD, "Gets model path of prop looking at");
 	RegAdminCmd("sm_colorprop", Command_ColorProp, PERM_MOD, "<r=0..255> <g=0..255> <b=0..255> [a=50..255] - Change prop color");
+	RegAdminCmd("sm_skinprop", Command_SkinProp, PERM_MOD, "<skin> - Skin number from 0 to an arbitrary value, usually no higher than 15");
 
 	ConVar convar = FindConVar("sv_lowedict_threshold");
 	if (convar != null) {
@@ -237,10 +243,12 @@ public void OnLowedictThresholdChanged(ConVar convar, const char[] oldValue, con
 
 Action Command_SpawnProp(int client, int args) {
 	char buff[128];
+	int skin;
 	GetCmdArg(0, buff, sizeof(buff));
 	bool physics = StrContains(buff, "phys")>0;
-	GetCmdArgString(buff, sizeof(buff));
-	int ent = SpawnPropAtClient(client, buff, physics);
+	if (GetCmdArgs()>1) { GetCmdArg(2, buff, sizeof(buff)); skin = StringToInt(buff); }
+	GetCmdArg(1, buff, sizeof(buff));
+	int ent = SpawnPropAtClient(client, buff, skin, physics);
 	if (ent == INVALID_ENT_REFERENCE)
 		ReplyToCommand(client, "[SM] Could not spawn prop");
 	else 
@@ -266,7 +274,7 @@ Action Command_DeleteProp(int client, int args) {
 
 Action Command_DeleteProp2(int client, int args) {
 	if (args == 0) {
-		ReplyToCommand(client, "[SM] Usage: /deletepropby <SteamID2|UserID|Target>");
+		ReplyToCommand(client, "[SM] Usage: /deletepropsby <SteamID2|UserID|Target>");
 		return Plugin_Handled;
 	}
 	int deleted;
@@ -388,7 +396,8 @@ Action Command_PropModel(int client, int args) {
 
 	char model[PLATFORM_MAX_PATH];
 	Entity_GetModel(entity, model, sizeof(model));
-	ReplyToCommand(client, "[SM] Prop ref %08X uses model %s", EntIndexToEntRef(entity), model);
+	int skin = GetEntProp(entity, Prop_Send, "m_nSkin");
+	ReplyToCommand(client, "[SM] Prop ref %08X uses model %s (%i)", EntIndexToEntRef(entity), model, skin);
 	return Plugin_Handled;
 }
 
@@ -429,10 +438,33 @@ Action Command_ColorProp(int client, int args) {
 	return Plugin_Handled;
 }
 
+Action Command_SkinProp(int client, int args) {
+	int entity = FindCommandTargetEntity(client, .cursorOnly=true);
+	if (entity == INVALID_ENT_REFERENCE) return Plugin_Handled;
+	if (args != 1) {
+		ReplyToCommand(client, "[SM] Usage: sm_skinprop <skin>");
+		return Plugin_Handled;
+	}
+	int skin;
+	char buffer[12];
+	GetCmdArg(1,buffer,sizeof(buffer));
+	skin = StringToInt(buffer);
+
+	SetEntProp(entity, Prop_Send, "m_nSkin", skin);
+
+	LocalPropData local;
+	int index;
+	if (GetMapPropByRef(entity, local, index)) {
+		local.Update(index);
+	}
+	ReplyToCommand(client, "[SM] Prop ref %08X is now using skin %i", EntIndexToEntRef(entity), skin);
+	return Plugin_Handled;
+}
+
 //#endregion
 
 void SQL_OnConnected(Database db, const char[] error, any data) {
-	if (db == null) {
+	if (db == null || error[0]) {
 		if (error[0]) LogError("Could not connect to presistend MapProp database: %s", error);
 		else LogError("Could not connect to presistend MapProp database: Unknown Error");
 		return;
@@ -461,7 +493,7 @@ static void LoadProps(bool reload=true) {
 }
 
 void SQL_OnPropsLoad(Database db, DBResultSet results, const char[] error, any data) {
-	if (results == null) {
+	if (results == null || error[0]) {
 		if (error[0]) LogError("Could not load map props for %s: %s", g_currentMapName, error);
 		else LogError("Could not load map props for %s: Unknown Error", g_currentMapName);
 		return;
@@ -470,6 +502,11 @@ void SQL_OnPropsLoad(Database db, DBResultSet results, const char[] error, any d
 	while (results.FetchRow()) {
 		LocalPropData local;
 		results.FetchString(0, local.model, sizeof(LocalPropData::model));
+		int idx = StrContains(local.model, ":");
+		if (idx > 0) {
+			local.skin = StringToInt(local.model[idx+1]);
+			local.model[idx] = 0;
+		}
 		results.FetchString(1, local.owner, sizeof(LocalPropData::owner));
 		local.origin[0]=results.FetchFloat(2);
 		local.origin[1]=results.FetchFloat(3);
@@ -490,7 +527,7 @@ void SQL_FastAsync(const char[] query) {
 	g_db.Query(__SQL_FastCB, query);
 }
 public void __SQL_FastCB(Database db, DBResultSet results, const char[] error, any data) {
-	if (results == null) {
+	if (results == null || error[0]) {
 		PrintToServer("Query failed: %s", error[0]?error:"Unknown");
 	}
 }
@@ -524,8 +561,8 @@ int SpawnPropAt(const char[] model, float origin[3], float angles[3], int skin=0
 	return INVALID_ENT_REFERENCE;
 }
 
-int SpawnOwnedPropAt(const char[] model, const char[] steamid, float position[3], float rotation[3], bool physics, int forceIndex=-1) {
-	int entity = SpawnPropAt(model, position, rotation, _, physics, COLLISION_GROUP_PLAYER, _);
+int SpawnOwnedPropAt(const char[] model, const char[] steamid, float position[3], float rotation[3], bool physics, int skin=0, int forceIndex=-1) {
+	int entity = SpawnPropAt(model, position, rotation, skin, physics, COLLISION_GROUP_PLAYER, _);
 	if (entity == INVALID_ENT_REFERENCE) return INVALID_ENT_REFERENCE;
 
 	if (forceIndex >= 0) {
@@ -533,6 +570,7 @@ int SpawnOwnedPropAt(const char[] model, const char[] steamid, float position[3]
 	} else {
 		LocalPropData local;
 		strcopy(local.model, sizeof(LocalPropData::model), model);
+		local.skin = skin;
 		strcopy(local.owner, sizeof(LocalPropData::owner), steamid);
 		local.origin = position;
 		local.rotation = rotation;
@@ -545,13 +583,13 @@ int SpawnOwnedPropAt(const char[] model, const char[] steamid, float position[3]
 	return entity;
 }
 
-int SpawnPropAtClient(int client, const char[] model, bool physics) {
+int SpawnPropAtClient(int client, const char[] model, int skin, bool physics) {
 	float origin[3], angles[3];
 	GetClientEyePosition(client, origin);
 	GetClientAbsAngles(client, angles);
 	origin[0] += 64 * Cosine(DegToRad(angles[1]));
 	origin[1] += 64 * Sine(DegToRad(angles[1]));
-	return SpawnOwnedPropAt(model, g_clientSteamId[client], origin, angles, physics);
+	return SpawnOwnedPropAt(model, g_clientSteamId[client], origin, angles, physics, skin);
 }
 
 static bool _HitSelfFilter(int entity, int contentsMask, int caster) {

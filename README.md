@@ -56,6 +56,7 @@ Commands are as follows (These have the permission ADMFLAG_GENERIC):
 * sm_propowner [ref] - shows who spawned the ref or aimed prop, if spawned with sm_spawn*
 * sm_propmodel [ref] - returns the model path for the ref or aimed prop
 * sm_colorprop &lt;r> &lt;g> &lt;b> [a] - colors a prop. r, g, b go from 0 to 255, a is optional with a min of 50
+* sm_skinprop &lt;skin> - skin number from 0 to an arbitrary value, usually no higher than 15
 
 ## [TF2] QuickTrack
 Allows servermods to quickly set up race tracks around maps with checkpoints, similar to bhop/surf timers.
