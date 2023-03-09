@@ -9,6 +9,7 @@ Table Of Content
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
 * [[ANY] SmartEdictOverflow](#ANY-SmartEdictOverflow)
 * [[TF2] TDM Tickets](#TF2-TDM-Tickets)
+* [[TF2] Train-Streak](#TF2-Train-Streak)
 * [[ANY] TP Ask](#ANY-TP-Ask)
 
 ## [TF2] Additional Settings
@@ -114,3 +115,6 @@ Asking a player will prompt them to `/tpaccept` or `/tpdeny` the request. If the
 
 After a teleport was accepted there's a warmup of `sm_tpa_warmup` seconds for the teleporting player. If they move of get hurt during this warmup, the teleport is interruped.
 Otherwise the teleport takes place and the player is on a cooldown of `sm_tpa_cooldown` seconds before being able to teleport again. The config is written to `cfg/sourcemod/plugin.tpask.cfg`.
+
+## [TF2] Train-Streak
+Might already exist, couldn't find it, rewrote it. Gives environmental vehicles (usually trains in TF2) kills a killstreak.
