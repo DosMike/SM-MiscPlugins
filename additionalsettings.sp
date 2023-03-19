@@ -6,12 +6,11 @@
 
 #include <tf2utils>
 #include <tf2attributes>
-#include <tf2regenthinkhook>
 
 #pragma newdecls required
 #pragma semicolon 1
 
-#define VERSION        "23w05a"
+#define VERSION        "23w11a"
 
 #define TRI_IGNORE 0
 #define TRI_REQUIRE 1
