@@ -5,6 +5,7 @@ Table Of Content
 * [[TF2] Additional Settings](#TF2-Additional-Settings)
 * [[TF2/MvM] AutoReady](#TF2MvM-AutoReady)
 * [[ANY] Map Props](#ANY-Map-Props)
+* [[ANY] Name Checker](#Name-Checker)
 * [[TF2] QuickTrack](#TF2-QuickTrack)
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
 * [[ANY] SmartEdictOverflow](#ANY-SmartEdictOverflow)
@@ -58,6 +59,16 @@ Commands are as follows (These have the permission ADMFLAG_GENERIC):
 * sm_colorprop &lt;r> &lt;g> &lt;b> [a] - colors a prop. r, g, b go from 0 to 255, a is optional with a min of 50
 * sm_skinprop &lt;skin> - skin number from 0 to an arbitrary value, usually no higher than 15
 
+## [ANY] Name Checker
+Small plugin that tracks player name changes and compares the new names agains other names using N-Grams. Bi-Grams to be more specific.
+This allows to calculate a similarity score in % instead of a "is-equal-or-not" by taking the number of common letter pairs over the number of unique letter pairs as fraction.
+When the threashold in `sv_max_name_similarity` is exceeded, SourceBans is used to give a session silence.
+
+This is intended to minimize the impact of name stealers spouting horrendous stuff in voice and text chat. If you renamed everyone the same as staff, you can use
+`/freename` to remove the silence from any player that is currently tracked as name-changer.
+
+You can also target `@namechanger` or `@deceivers` to punish these players, or use `@!namechanger` or `@!deceivers` to target everyone else.
+
 ## [TF2] QuickTrack
 Allows servermods to quickly set up race tracks around maps with checkpoints, similar to bhop/surf timers.
 The setup is done entirely through VGUI menus and player positioning.
@@ -73,7 +84,7 @@ Commands:
 
 ## [ANY] SlapAndBury
 Three command for admins with the SLAY flag:
-* sm_bury <target> / sm_unbury <target> - force players stuck into the ground.
+* sm_bury <target> ['hard'] / sm_unbury <target> - force players stuck into the ground. If hard, they can't killbind.
 * sm_rslap <target> [repeats] [delay] [damage] - use this instead of spamming your sm_slap bind or mashing up,enter in console
 
 ## [ANY] SmartEdictOverflow
@@ -116,4 +127,4 @@ After a teleport was accepted there's a warmup of `sm_tpa_warmup` seconds for th
 Otherwise the teleport takes place and the player is on a cooldown of `sm_tpa_cooldown` seconds before being able to teleport again. The config is written to `cfg/sourcemod/plugin.tpask.cfg`.
 
 ## [TF2] Train-Streak
-Might already exist, couldn't find it, rewrote it. Gives environmental vehicles (usually trains in TF2) kills a killstreak.
+Might already exist, couldn't find it, rewrote it. Gives environmental vehicles (usually trains in TF2) kills a killstreak. Oh and saw blades.

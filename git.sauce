@@ -21,6 +21,7 @@ dependency github nosoop/SM-TFUtils 1.2.1
 spcomp -O2 additionalsettings.sp
 spcomp -O2 autoready.sp
 spcomp -O2 mapprops.sp
+spcomp -O2 namechecker.sp
 spcomp -O2 quicktracks.sp
 spcomp -O2 slapandbury.sp
 spcomp -O2 tdm_tickets.sp
@@ -33,6 +34,7 @@ with files
  additionalsettings.smx
  autoready.smx
  mapprops.smx
+ namechecker.smx
  quicktracks.smx
  slapandbury.smx
  tdm_tickets.smx

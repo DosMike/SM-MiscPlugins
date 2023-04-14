@@ -6,7 +6,13 @@
 //#include <SetCollisionGroup> //is included in sourcemod with 1.11
 //#endif
 
-#define PLUGIN_VERSION "22w41a"
+#define PLUGIN_VERSION "23w14a"
+
+enum EBuryType {
+	UNBURIED=0,
+	BURIED=1,
+	BURIED_HARD=2
+}
 
 public Plugin myinfo = {
 	name = "Slap and Bury",
@@ -19,7 +25,7 @@ public Plugin myinfo = {
 ArrayList slapSounds;
 
 enum struct BuryData {
-	bool IsBuried;
+	EBuryType IsBuried;
 	bool PreGroundFlagged;
 	MoveType PreMoveType;
 	int PreCollisionGroup;
@@ -42,7 +48,7 @@ methodmap Player {
 			(!requireInGame || IsClientInGame(this.Client)) &&
 			(!requireAlive || IsPlayerAlive(this.Client)) ;
 	}
-	public void Bury() {
+	public void Bury(bool hard) {
 		if (g_bury[this.Client].IsBuried) return;
 		g_bury[this.Client].PreGroundFlagged = (GetEntityFlags(this.Client)&FL_ONGROUND)!=0;
 		g_bury[this.Client].PreMoveType = GetEntityMoveType(this.Client);
@@ -77,7 +83,7 @@ methodmap Player {
 			AcceptEntityInput(this.Client, "SetParent", buryParent, -1, 0);
 		}
 		g_bury[this.Client].BuryDistance = preZ - buryPos[2];
-		g_bury[this.Client].IsBuried = true;
+		g_bury[this.Client].IsBuried = hard ? BURIED_HARD : BURIED ;
 		char soundName[40];
 		Format(soundName, sizeof(soundName), "physics/body/body_medium_break%i.wav", GetRandomInt(2,4));
 		EmitSoundToAll(soundName, this.Client);
@@ -94,14 +100,14 @@ methodmap Player {
 		TeleportEntity(this.Client, pos, NULL_VECTOR, NULL_VECTOR);
 //		SetEntityCollisionGroup(this.Client, g_bury[this.Client].PreCollisionGroup);
 		SetEntityMoveType(this.Client, g_bury[this.Client].PreMoveType);
-		g_bury[this.Client].IsBuried = false;
+		g_bury[this.Client].IsBuried = UNBURIED;
 		if (playSound) {
 			char soundName[40];
 			Format(soundName, sizeof(soundName), "physics/body/body_medium_break%i.wav", GetRandomInt(2,4));
 			EmitSoundToAll(soundName, this.Client);
 		}
 	}
-	property bool IsBuried {
+	property EBuryType IsBuried {
 		public get() { return g_bury[this.Client].IsBuried; }
 	}
 	public void Reset() {
@@ -113,7 +119,7 @@ methodmap Player {
 				AcceptEntityInput(this.Client, "ClearParent", inent, -1, 0);
 			}
 		}
-		g_bury[this.Client].IsBuried = false;
+		g_bury[this.Client].IsBuried = UNBURIED;
 		g_bury[this.Client].InEntityRef = INVALID_ENT_REFERENCE;
 	}
 }
@@ -124,11 +130,12 @@ public bool TRFilter_NoClients(int entity, int contentMask) {
 public void OnPluginStart() {
 	LoadTranslations("common.phrases");
 	
-	RegAdminCmd("sm_bury", Command_Bury, ADMFLAG_SLAY, "Usage: sm_bury <targets> - Bury a player in the ground, imobalizing them");
+	RegAdminCmd("sm_bury", Command_Bury, ADMFLAG_SLAY, "Usage: sm_bury <targets> ['hard'] - Bury a player in the ground, imobalizing them");
 	RegAdminCmd("sm_unbury", Command_Unbury, ADMFLAG_SLAY, "Usage: sm_unbury <targets> - Bury a player in the ground, imobalizing them");
 	RegAdminCmd("sm_rslap", Command_RSlap, ADMFLAG_SLAY, "Usage: sm_rslap <targets> [repeats=1] [delay=0.2] [damage=0] [force=1] - Slap a player multiple times, delay is 0.02..0.5, force is a multiplier");
 	
 	AddCommandListener(Command_Kill, "kill")
+	AddCommandListener(Command_Kill, "explode")
 	
 	HookEvent("player_death", OnClientDeathPost);
 	HookEvent("teamplay_round_start", OnMapEntitiesRefreshed);
@@ -185,7 +192,7 @@ static void UnburyAll() {
 }
 
 public Action Command_Kill(int client, const char[] command, int argc) {
-	if (Player(client).IsBuried) {
+	if (Player(client).IsBuried == BURIED_HARD) {
 		ReplyToCommand(client, "[SM] You cannot do this right now");
 		return Plugin_Handled;
 	}
@@ -193,19 +200,30 @@ public Action Command_Kill(int client, const char[] command, int argc) {
 }
 public Action Command_Bury(int client, int args) {
 	if (!args) {
-		ReplyToCommand(client, "Usage: sm_bury <targets>");
+		ReplyToCommand(client, "Usage: sm_bury <targets> ['hard']");
 		return Plugin_Handled;
 	}
 	char pattern[128];
-	GetCmdArgString(pattern, sizeof(pattern));
+	GetCmdArg(1, pattern, sizeof(pattern));
 	int targets[MAXPLAYERS];
 	char tname[64];
 	bool tn_is_ml;
 	int result = ProcessTargetString(pattern, client, targets, sizeof(targets), COMMAND_FILTER_ALIVE, tname, sizeof(tname), tn_is_ml);
+	bool harderDaddy = false;
+	if (args > 1) {
+		GetCmdArg(2, pattern, sizeof(pattern));
+		if (StrEqual(pattern, "hard", false)) 
+			harderDaddy = true;
+		else {
+			ReplyToCommand(client, "I dont know what you want from me... ");
+			ReplyToCommand(client, "Usage: sm_bury <targets> ['hard']");
+			return Plugin_Handled;
+		}
+	}
 	if (result <= 0) {
 		ReplyToTargetError(client, result);
 	} else {
-		ActBuryOn(targets, result, false);
+		ActBuryOn(targets, result, harderDaddy ? BURIED_HARD : BURIED);
 		if (tn_is_ml) {
 			ShowActivity2(client, "[SM] ", "%N buried %t in the ground", client, tname);
 		} else {
@@ -216,7 +234,7 @@ public Action Command_Bury(int client, int args) {
 }
 public Action Command_Unbury(int client, int args) {
 	if (!args) {
-		ReplyToCommand(client, "Usage: sm_bury <targets>");
+		ReplyToCommand(client, "Usage: sm_unbury <targets>");
 		return Plugin_Handled;
 	}
 	char pattern[128];
@@ -228,7 +246,7 @@ public Action Command_Unbury(int client, int args) {
 	if (result <= 0) {
 		ReplyToTargetError(client, result);
 	} else {
-		ActBuryOn(targets, result, true);
+		ActBuryOn(targets, result, UNBURIED);
 		if (tn_is_ml) {
 			ShowActivity2(client, "[SM] ", "%N unburied %t from the ground", client, tname);
 		} else {
@@ -237,12 +255,12 @@ public Action Command_Unbury(int client, int args) {
 	}
 	return Plugin_Handled;
 }
-void ActBuryOn(int[] targets, int numtargets, bool unbury=false) {
+void ActBuryOn(int[] targets, int numtargets, EBuryType bury) {
 	for (int i=0;i<numtargets;i++) {
 		Player target = Player(targets[i]);
-		if (!target.IsValid() || target.IsBuried != unbury) continue;
-		if (unbury) target.Unbury();
-		else target.Bury();
+		if (!target.IsValid() || (target.IsBuried != UNBURIED) == (bury != UNBURIED)) continue;
+		if (bury == UNBURIED) target.Unbury();
+		else target.Bury(bury == BURIED_HARD);
 	}
 }
 

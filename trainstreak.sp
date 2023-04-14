@@ -4,7 +4,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "23w08a"
+#define PLUGIN_VERSION "23w12a"
 
 public Plugin myinfo = {
 	name = "[TF2] Train-Streak",
@@ -15,6 +15,7 @@ public Plugin myinfo = {
 }
 
 int trainStreak;
+int sawStreak;
 
 public void OnPluginStart() {
 	HookEvent("player_death", OnPlayerDeath, EventHookMode_Pre);
@@ -22,6 +23,7 @@ public void OnPluginStart() {
 
 public void OnMapStart() {
 	trainStreak = 0; //reset on map change
+	sawStreak = 0; //reset on map change
 }
 
 public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
@@ -29,9 +31,16 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) 
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	
-	if ((damagebits & DMG_VEHICLE) && !attacker && victim) {
-		event.SetInt("kill_streak_wep", ++trainStreak);
-		return Plugin_Changed;
+	if (!attacker && victim) {
+		if ((damagebits & DMG_VEHICLE)) {
+			event.SetInt("kill_streak_wep", ++trainStreak);
+			return Plugin_Changed;
+		} else if ((damagebits & DMG_NERVEGAS)) {
+			event.SetInt("kill_streak_wep", ++sawStreak);
+			return Plugin_Changed;
+//		} else {
+//			PrintToServer("DamageBits %08X", damagebits);
+		}
 	}
 	return Plugin_Continue;
 }
