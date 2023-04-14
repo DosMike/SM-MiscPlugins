@@ -2,7 +2,7 @@
 #include <sdkhooks>
 #include <sdktools>
 
-//#include <sourcecomms>
+#include <sourcecomms>
 
 #pragma newdecls required
 #pragma semicolon 1
@@ -116,10 +116,10 @@ void PunishClient(int client, int similar, float similarity) {
 	
 	if (clientPunished[client]) return;
 	
-//	if (SourceComms_GetClientGagType(client) == bNot)
-//		SourceComms_SetClientGag(client, true, -1, false, "Duplicate Name");
-//	if (SourceComms_GetClientMuteType(client) == bNot)
-//		SourceComms_SetClientMute(client, true, -1, false, "Duplicate Name");
+	if (SourceComms_GetClientGagType(client) == bNot)
+		SourceComms_SetClientGag(client, true, -1, false, "Duplicate Name");
+	if (SourceComms_GetClientMuteType(client) == bNot)
+		SourceComms_SetClientMute(client, true, -1, false, "Duplicate Name");
 	
 	clientPunished[client] = true;
 }
@@ -129,10 +129,10 @@ void FreenameClient(int client) {
 	
 	PrintToChat(client, "[SM] Comms are re-enabled");
 	
-//	if (SourceComms_GetClientGagType(client) == bSess)
-//		SourceComms_SetClientGag(client, false);
-//	if (SourceComms_GetClientMuteType(client) == bSess)
-//		SourceComms_SetClientMute(client, false);
+	if (SourceComms_GetClientGagType(client) == bSess)
+		SourceComms_SetClientGag(client, false);
+	if (SourceComms_GetClientMuteType(client) == bSess)
+		SourceComms_SetClientMute(client, false);
 	
 	clientPunished[client] = false;
 }
