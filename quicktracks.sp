@@ -732,6 +732,7 @@ public int HandleTrackTopMenu(Menu menu, MenuAction action, int param1, int para
 	if (action == MenuAction_End) {
 		delete menu;
 	}
+	return 0;
 }
 
 public Action Command_TeamSay(int client, const char[] command, int argc) {
@@ -804,6 +805,7 @@ public int HandleTrackPickMenu(Menu menu, MenuAction action, int param1, int par
 			}
 		}
 	}
+	return 0;
 }
 
 void ShowEditTrackMenu(int client) {
@@ -885,6 +887,7 @@ public int HandleEditTrackMenu(Menu menu, MenuAction action, int param1, int par
 			PrintToChat(param1, "[QT] The track \"%s\" was deleted!", track.name);
 		}
 	}
+	return 0;
 }
 
 void ShowEditZoneMenu(int client) {
@@ -990,7 +993,7 @@ public int HandleEditZoneMenu(Menu menu, MenuAction action, int param1, int para
 			if (!remain) {
 				clientZoneEditIndex[param1] = ZONE_EDITNONE;
 				ShowPickZoneMenu(param1);
-				return;
+				return 0;
 			}
 			//if tail was poped reduce edit index
 			if (clientZoneEditIndex[param1] >= remain) {
@@ -1000,6 +1003,7 @@ public int HandleEditZoneMenu(Menu menu, MenuAction action, int param1, int para
 			ShowEditZoneMenu(param1);
 		}
 	}
+	return 0;
 }
 
 void ShowPickZoneMenu(int client) {
@@ -1083,6 +1087,7 @@ public int HandlePickZoneMenu(Menu menu, MenuAction action, int param1, int para
 			ShowEditZoneMenu(param1);
 		}
 	}
+	return 0;
 }
 
 void ShowEditLapsMenu(int client) {
@@ -1132,6 +1137,7 @@ public int HandleEditLapsMenu(Menu menu, MenuAction action, int param1, int para
 		
 		ShowEditLapsMenu(param1);
 	}
+	return 0;
 }
 
 void ShowEditRulesMenu(int client, int firstItem=0) {
@@ -1205,6 +1211,7 @@ public int HandleEditRulesMenu(Menu menu, MenuAction action, int param1, int par
 		
 		ShowEditRulesMenu(param1, (param2/7)*7);
 	}
+	return 0;
 }
 
 int g_colStart[4] = { 0,255,0,255 };

@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "23w15a"
+#define PLUGIN_VERSION "23w15b"
 
 public Plugin myinfo = {
 	name = "Name Checker",
@@ -30,10 +30,12 @@ public void OnPluginStart() {
 	
 	cvar_similarity = CreateConVar("sv_max_name_similarity", "0.66", "If names are more similar than this, comms get blocked (0.5 .. 1.0)", FCVAR_DONTRECORD, true, 0.5, true, 1.0);
 	
-	AddMultiTargetFilter("@deceivers", TargetCollector_Punished, "Name-Stealers", false);
+	AddMultiTargetFilter("@deceivers", TargetCollector_Punished, "Duped Names", false);
+	AddMultiTargetFilter("@dupednames", TargetCollector_Punished, "Duped Names", false);
 	AddMultiTargetFilter("@namestealer", TargetCollector_Punished, "Name-Stealers", false);
-	AddMultiTargetFilter("@!deceivers", TargetCollector_Punished, "Non Name-Stealers", false);
-	AddMultiTargetFilter("@!namestealer", TargetCollector_Punished, "Non Name-Stealers", false);
+	AddMultiTargetFilter("@!deceivers", TargetCollector_Punished, "Uniquely Named", false);
+	AddMultiTargetFilter("@!dupednames", TargetCollector_Punished, "Uniquely Named", false);
+	AddMultiTargetFilter("@!namestealer", TargetCollector_Punished, "Uniquely Named", false);
 	
 	char name[NAME_MAX_LENGTH];
 	for (int client=1; client<MaxClients; client++) {

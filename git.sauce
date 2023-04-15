@@ -1,4 +1,4 @@
-sourcemod 1.10
+sourcemod 1.11
 
 auth github ${GITHUB_TOKEN}
 

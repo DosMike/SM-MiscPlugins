@@ -65,6 +65,7 @@ public Action Timer_TicketUpdate(Handle timer) {
 		g_iTickets[TEAM_RED-2] = g_iTickets[TEAM_RED];
 		SendConVarValueAll(cvar_mp_tournament_redteamname, "Tickets: %i", g_iTickets[TEAM_RED]);
 	}
+	return Plugin_Continue;
 }
 
 public void OnRoundStart(Event event, const char[] name, bool dontBroadcast) {
