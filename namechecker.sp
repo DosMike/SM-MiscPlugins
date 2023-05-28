@@ -25,6 +25,7 @@ ConVar cvar_similarity;
 
 public void OnPluginStart() {
 	HookEvent("player_changename", OnPlayerChangeName, EventHookMode_Post);
+	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 	
 	RegAdminCmd("sm_freename", Cmd_FreeName, ADMFLAG_GENERIC, "Re-enable comms for everyone currently blocked due to renames");
 	
@@ -67,6 +68,14 @@ public void OnClientPutInServer(int client) {
 	ValidateNamechange(client);
 }
 
+public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast) {
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (!client) return;
+	
+	if (clientPunished[client] && GetClientTeam(client)>1) //ignore before assigned a team
+		ValidateNamechange(client, false); 
+}
+
 public void OnPlayerChangeName(Event event, const char[] name, bool dontBroadcast) {
 	char newName[32];
 	int client = GetClientOfUserId(event.GetInt("userid"));
@@ -91,13 +100,16 @@ public bool TargetCollector_Punished(const char[] pattern, ArrayList clients, in
 }
 
 
-bool ValidateNamechange(int client) {
-	char name[NAME_MAX_LENGTH];
-	if (!GetClientName(client, name, sizeof(name))) return false; //?
-//	PrintToChat(client, "Updating name for %i (%s)", client, name);
+bool ValidateNamechange(int client, bool updateName=true) {
+	if (updateName) {
+		char name[NAME_MAX_LENGTH];
+		if (!GetClientName(client, name, sizeof(name))) return false; //?
+		
+		CreatePlayerNGram(client, name);
+	}
 	
-	//create ngram
-	CreatePlayerNGram(client, name);
+	//bypass
+	if (CheckCommandAccess(client, "sm_rename", ADMFLAG_GENERIC)) return true;
 	
 	//find similar names
 	float similarity = cvar_similarity.FloatValue;
@@ -112,11 +124,13 @@ bool ValidateNamechange(int client) {
 void PunishClient(int client, int similar, float similarity) {
 	PrintToChat(client, "[SM] Your name is too close to %N (%.0f%%)", similar, similarity*100);
 	PrintToChat(client, "[SM]  -> Comms are disabled until you rename");
+	
+	if (clientPunished[client]) return;
+	
+	// new block, notify staff
 	char buf[32];
 	FormatActivitySource(0, client, buf, sizeof(buf));
 	ShowActivity(0, "[SM] The comms for %L were blocked, name is too close to %L (%.0f%%)", client, similar, similarity*100);
-	
-	if (clientPunished[client]) return;
 	
 	if (SourceComms_GetClientGagType(client) == bNot)
 		SourceComms_SetClientGag(client, true, -1, false, "Duplicate Name");
