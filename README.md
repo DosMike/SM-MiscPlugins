@@ -104,6 +104,11 @@ Commands:
 * `seop_info` - Dump some stats into the console
 * `seop_track` - Manually toggle the info overlay
 
+## [ANY] Staff RCon
+Utility to lock down RCon requests even harder using the smrcon extension. SteamWorks is used to automatically whitelist the servers own IPaddr.
+This currently has no config, and was not extensively tested, thus it is not part of the build!
+RCon requests from IP addresses that are not whitelisted require a staff member with sm_rcon access to be ingame from the same IP at the same time.
+The RCon password is still required.
 
 ## [TF2] TDM Tickets
 A small plugin for TF2 servers that implements a battlefield like ticket system for team deathmatch.

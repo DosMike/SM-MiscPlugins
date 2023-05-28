@@ -15,6 +15,7 @@ dependency github bcserv/smlib transitional_syntax-SNAPSHOT
 dependency github DosMike/TF2-RegenThinkHook master-SNAPSHOT
 dependency github FlaminSarge/tf2attributes v1.7.2
 dependency github nosoop/SM-TFUtils 1.2.1
+dependency github sbpp/sourcebans-pp php81-SNAPSHOT
 
 # build
 
