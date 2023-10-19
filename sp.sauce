@@ -44,7 +44,3 @@ with files
  tpask.smx
  trainstreak.smx
 :release zip Compiled.zip
-
-with files
- Compiled.zip
-:release github ${GITHUB_REPOSITORY} ${GITHUB_REF_NAME}

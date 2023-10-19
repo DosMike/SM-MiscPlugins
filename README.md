@@ -9,6 +9,7 @@ Table Of Content
 * [[TF2] QuickTrack](#TF2-QuickTrack)
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
 * [[ANY] SmartEdictOverflow](#ANY-SmartEdictOverflow)
+* [[ANY] Spec Ghost](#TF2-Spec-Ghost)
 * [[TF2] TDM Tickets](#TF2-TDM-Tickets)
 * [[TF2] Train-Streak](#TF2-Train-Streak)
 * [[ANY] TP Ask](#ANY-TP-Ask)
@@ -103,6 +104,10 @@ ConVars:
 Commands:
 * `seop_info` - Dump some stats into the console
 * `seop_track` - Manually toggle the info overlay
+
+## [TF2] Spec Ghost
+
+Spectators are small team-colored ghosts.
 
 ## [ANY] Staff RCon
 Utility to lock down RCon requests even harder using the smrcon extension. SteamWorks is used to automatically whitelist the servers own IPaddr.
