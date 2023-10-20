@@ -9,7 +9,7 @@ Table Of Content
 * [[TF2] QuickTrack](#TF2-QuickTrack)
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
 * [[ANY] SmartEdictOverflow](#ANY-SmartEdictOverflow)
-* [[ANY] Spec Ghost](#TF2-Spec-Ghost)
+* [[TF2] Spec Ghost](#TF2-Spec-Ghost)
 * [[TF2] TDM Tickets](#TF2-TDM-Tickets)
 * [[TF2] Train-Streak](#TF2-Train-Streak)
 * [[ANY] TP Ask](#ANY-TP-Ask)
@@ -107,7 +107,8 @@ Commands:
 
 ## [TF2] Spec Ghost
 
-Spectators are small team-colored ghosts.
+Spectators are small team-colored ghosts. Use `/voicemenu` as ghost to communicate.
+The convar `specghost_voicemenu_enabled` controls availibility of the `/voicemenu` command.
 
 ## [ANY] Staff RCon
 Utility to lock down RCon requests even harder using the smrcon extension. SteamWorks is used to automatically whitelist the servers own IPaddr.
