@@ -27,11 +27,17 @@ enum ObserverMode {
 	OBS_MODE_ROAMING,	// free roaming
 }
 
+Menu menuList[3];
+int clientVoiceMenu[MAXPLAYERS+1];
+float clientLastVoiceTime[MAXPLAYERS+1];
+int clientPrevButtons[MAXPLAYERS+1];
+
 bool clientSpectating[MAXPLAYERS+1] = {false, ...};
 int clientGhostRef[MAXPLAYERS+1] = {-1, ...};
 int clientOldTeam[MAXPLAYERS+1] = {0, ...};
 int clientOldClass[MAXPLAYERS+1] = {0, ...};
 ConVar cvarEnableVoice;
+ConVar cvarAllowPlayerUse;
 
 public void OnPluginStart() {
     HookEventEx("player_team", OnPlayerChangeTeam, EventHookMode_Post);
@@ -41,6 +47,7 @@ public void OnPluginStart() {
     AddCommandListener(OnVoiceCmd, "voicemenu");
     RegConsoleCmd("sm_voicemenu", OnVoiceMenu, "Sourcemod proxy for 'voice_menu_x' and 'voicemenu x y'");
     cvarEnableVoice = CreateConVar("specghost_voicemenu_enabled", "1", "Enable specator ghost voicemenu (sm_voicemenu)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    cvarAllowPlayerUse = FindConVar("tf_allow_player_use");
     for (int i=1; i<=MAXPLAYERS; i++) clientGhostRef[i] = INVALID_ENT_REFERENCE;
 
     //late load stuff
@@ -80,9 +87,10 @@ void OnPlayerChangeClass(Event event, const char[] name, bool dontBroadcast) {
 
 public void OnClientConnected(int client) {
     clientOldTeam[client] = 0;
-    clientOldClass[client] = 0;
+    clientOldClass[client] = GetRandomInt(1,9);
     clientGhostRef[client] = INVALID_ENT_REFERENCE;
     clientSpectating[client] = false;
+    clientPrevButtons[client] = 0;
 }
 
 public void OnClientDisconnect(int client) {
@@ -168,7 +176,7 @@ public void OnGameFrame() {
     }
 }
 
-// re enable features in spectate:
+// re enable features in spectate: voicemenu
 
 char voicecmd_name_class[10][10] = {
     "Unknown",
@@ -222,7 +230,13 @@ int voicecmd_variants[10][24] = {
     {3, 3, 3, 2, 3, 3, 3, 3, 3, 4, 2, 1, 1, 1, 3, 0, 3, 4, 8, 6, 5, 9, 3, 3}, // spy
     {3, 1, 3, 1, 2, 3, 3, 3, 3, 3, 2, 2, 1, 1, 3, 0, 3, 7, 7, 4, 1,12, 3, 3}, // engi
 };
-void PlayVoiceCmdLineAt(float position[3], int entity, int class, int group, int line) {
+void PlayVoiceCmdLine(int player, int class, int group, int line) {
+    if (GetGameTime() - clientLastVoiceTime[player] < 5.0) return;
+    clientLastVoiceTime[player] = GetGameTime();
+
+    float position[3];
+    GetClientEyePosition(player, position);
+
     if (!(0<=group<=2) || !(0<=line<=7) || !(0<=class<=9)) return; //invalid combo
     int index = group * 8 + line;
     int rng = voicecmd_variants[class][index];
@@ -242,16 +256,12 @@ void PlayVoiceCmdLineAt(float position[3], int entity, int class, int group, int
     int pitch;
     char sample[PLATFORM_MAX_PATH];
     
-    PrintToServer("Playing %s", gameSound);
-    if (GetGameSoundParams(gameSound, channel, level, volume, pitch, sample, sizeof(sample), entity)) {
+    if (GetGameSoundParams(gameSound, channel, level, volume, pitch, sample, sizeof(sample), player)) {
         volume  *= 0.5;
         pitch += 50;
-        EmitSound(clients, clientCount, sample, entity, channel, level, SND_CHANGEPITCH|SND_CHANGEVOL, volume, pitch, -1, position);
+        EmitSound(clients, clientCount, sample, player, channel, level, SND_CHANGEPITCH|SND_CHANGEVOL, volume, pitch, -1, position);
     }
 }
-
-Menu menuList[3];
-int clientVoiceMenu[MAXPLAYERS+1];
 
 Action OnVoiceCmd(int client, const char[] command, int argc) {
     if (argc != 2 || !cvarEnableVoice.BoolValue) return Plugin_Continue;
@@ -260,9 +270,7 @@ Action OnVoiceCmd(int client, const char[] command, int argc) {
 
     if (!CheckEntRef(clientGhostRef[client])) return Plugin_Continue;
 
-    float pos[3];
-    GetClientEyePosition(client, pos);
-    PlayVoiceCmdLineAt(pos, client, clientOldClass[client], group, line);
+    PlayVoiceCmdLine(client, clientOldClass[client], group, line);
     return Plugin_Continue;
 }
 Action OnVoiceMenu(int client, int argc) {
@@ -285,9 +293,7 @@ Action OnVoiceMenu(int client, int argc) {
     } else if (!CheckEntRef(clientGhostRef[client])) {
         ReplyToCommand(client, "You are currently not a ghost");
     } else {
-        float pos[3];
-        GetClientEyePosition(client, pos);
-        PlayVoiceCmdLineAt(pos, client, clientOldClass[client], group, line);
+        PlayVoiceCmdLine(client, clientOldClass[client], group, line);
         return Plugin_Continue;
     }
     return Plugin_Continue;
@@ -345,9 +351,7 @@ int CustomVoiceMenuHandler(Menu menu, MenuAction action, int param1, int param2)
         if (GetClientTeam(param1) > 1) {
             FakeClientCommand(param1, "voicemenu %d %d", group, line);
         } else {
-            float pos[3];
-            GetClientEyePosition(param1, pos);
-            PlayVoiceCmdLineAt(pos, param1, clientOldClass[param1], group, line);
+            PlayVoiceCmdLine(param1, clientOldClass[param1], group, line);
         }
         
         clientVoiceMenu[param1] = 0;
@@ -358,6 +362,35 @@ int CustomVoiceMenuHandler(Menu menu, MenuAction action, int param1, int param2)
     }
     return 0;
 }
+
+// re enable features in spectate: +use
+
+bool TR_Filter_NotSelfOrGhost(int entity, int contentsMask, any data) {
+    return entity != data && entity != clientGhostRef[data];
+}
+
+public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float vel[3], const float angles[3], int weapon, int subtype, int cmdnum, int tickcount, int seed, const int mouse[2]) {
+    if (!cvarAllowPlayerUse.BoolValue || !CheckCommandAccess(client, "specghost_usebuttons", ADMFLAG_GENERIC)) return; //no permission to +use
+    if (!!(buttons & IN_USE) && !(clientPrevButtons[client] & IN_USE) && CheckEntRef(clientGhostRef[client])) {
+        float pos[3], vec[3], fwd[3];
+        GetClientEyePosition(client, pos);
+        GetClientEyeAngles(client, vec);
+        GetAngleVectors(vec, fwd, NULL_VECTOR, NULL_VECTOR);
+        ScaleVector(fwd, 64.0);
+        AddVectors(pos, fwd, vec);
+
+        Handle ray = TR_TraceRayFilterEx(pos, vec, MASK_PLAYERSOLID, RayType_EndPoint, TR_Filter_NotSelfOrGhost, client);
+        if (TR_DidHit(ray)) {
+            int potential_button = TR_GetEntityIndex(ray);
+            if (potential_button > MaxClients) {
+                AcceptEntityInput(potential_button, "Use", client, client);
+            }
+        }
+        delete ray;
+    }
+    clientPrevButtons[client] = buttons;
+}
+
 
 bool CheckEntRef(int ref) {
     int idx = EntRefToEntIndex(ref);

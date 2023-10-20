@@ -109,6 +109,7 @@ Commands:
 
 Spectators are small team-colored ghosts. Use `/voicemenu` as ghost to communicate.
 The convar `specghost_voicemenu_enabled` controls availibility of the `/voicemenu` command.
+The use the override `specghost_usebuttons` to allow ghosts to +use buttons (default ADMFLAG_GENERIC).
 
 ## [ANY] Staff RCon
 Utility to lock down RCon requests even harder using the smrcon extension. SteamWorks is used to automatically whitelist the servers own IPaddr.
