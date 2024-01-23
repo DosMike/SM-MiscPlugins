@@ -4,15 +4,18 @@ This repo is for smaller plugins that I don't feel like creating a dedicated rep
 Table Of Content
 * [[TF2] Additional Settings](#TF2-Additional-Settings)
 * [[TF2/MvM] AutoReady](#TF2MvM-AutoReady)
+* [[ANY] FartCombat](#TF2-FartCombat)
 * [[ANY] Map Props](#ANY-Map-Props)
 * [[ANY] Name Checker](#Name-Checker)
 * [[TF2] QuickTrack](#TF2-QuickTrack)
+* [[TF2] RaidBlocker](#ANY-RaidBlocker)
 * [[ANY] SlapAndBury](#ANY-SlapAndBury)
 * [[ANY] SmartEdictOverflow](#ANY-SmartEdictOverflow)
 * [[TF2] Spec Ghost](#TF2-Spec-Ghost)
 * [[TF2] TDM Tickets](#TF2-TDM-Tickets)
 * [[TF2] Train-Streak](#TF2-Train-Streak)
 * [[ANY] TP Ask](#ANY-TP-Ask)
+* [[ANY] Wallclimb](#TF2-Wallclimb)
 
 ## [TF2] Additional Settings
 
@@ -34,6 +37,14 @@ ConVars are the same to allow for drop in replacement:
 `mvm_autoready_percent` - the ratio of players (0.0 .. 1.0) that have to ready to force start the round    
 Admin Command:    
 `sm_forceallready` - force all players into the ready state, starting the round. Requires the cheat admin flag.
+
+## [TF2] FartCombat
+Toilet humor haha. This is a gameplay plugin. Medic farts heal, yes. Soundfiles not included.
+
+ConVars are:   
+`mp_fartcombat` - turn farts on   
+`mp_fartnoguns` - default 1, set 0 to allow weapons   
+`mp_fartdamage` - defautt 100
 
 ## [ANY] Map Props
 Allows server mods to spawn and manipulate and save props using an array of commands.
@@ -82,6 +93,13 @@ Commands:
 * sm_edittrack [track] - Open the track editor for the track (ADMFLAG_GENERIC)
 * sm_tracktop [track] - Open the top-scores for the current track, or the specified track
 * sm_stoptrack - End the track a player is currently on
+
+## [TF2] RaidBlocker
+Collects clients spamming callvote kick and/or sm_votekick. Written for TF2, might work in other games idk&idc.
+Configure using defines in the .sp.
+
+You can target `@botraid` for players calling to many votes joining at the same time, or enable auto ban
+for anything that spams vote kicks.
 
 ## [ANY] SlapAndBury
 Three command for admins with the SLAY flag:
@@ -140,3 +158,6 @@ Otherwise the teleport takes place and the player is on a cooldown of `sm_tpa_co
 
 ## [TF2] Train-Streak
 Might already exist, couldn't find it, rewrote it. Gives environmental vehicles (usually trains in TF2) kills a killstreak. Oh and saw blades.
+
+## [TF2] Wallclimb
+Reimplementation of VSH wallclimb taken from VScript (original by LizardOfOz). Voice lines not included. Hit a wall and go!

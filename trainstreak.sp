@@ -16,14 +16,16 @@ public Plugin myinfo = {
 
 int trainStreak;
 int sawStreak;
+int crocStreak;
 
 public void OnPluginStart() {
 	HookEvent("player_death", OnPlayerDeath, EventHookMode_Pre);
 }
 
 public void OnMapStart() {
-	trainStreak = 0; //reset on map change
-	sawStreak = 0; //reset on map change
+	trainStreak = 0;
+	sawStreak = 0;
+	crocStreak = 0;
 }
 
 public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
@@ -38,8 +40,11 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) 
 		} else if ((damagebits & DMG_NERVEGAS)) {
 			event.SetInt("kill_streak_wep", ++sawStreak);
 			return Plugin_Changed;
-//		} else {
-//			PrintToServer("DamageBits %08X", damagebits);
+		} else if ((damagebits & DMG_CRUSH)) {
+			event.SetInt("kill_streak_wep", ++crocStreak);
+			return Plugin_Changed;
+		// } else {
+		// 	PrintToServer("DamageBits %08X", damagebits);
 		}
 	}
 	return Plugin_Continue;

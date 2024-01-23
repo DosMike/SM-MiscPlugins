@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "23w15b"
+#define PLUGIN_VERSION "24w03a"
 
 public Plugin myinfo = {
 	name = "Name Checker",
@@ -109,6 +109,7 @@ bool ValidateNamechange(int client, bool updateName=true) {
 	}
 	
 	//bypass
+	if (IsFakeClient(client) || IsClientSourceTV(client) || IsClientReplay(client)) return true; // bots can have it whatever
 	if (CheckCommandAccess(client, "sm_rename", ADMFLAG_GENERIC)) return true;
 	
 	//find similar names
@@ -162,6 +163,7 @@ void FreenameClient(int client) {
 int FindPlayerWithSimilarName(int searchClient, float& similarity) {
 	int found;
 	for (int client=1; client<=MaxClients; client+=1) {
+		if (IsFakeClient(client) || IsClientSourceTV(client) || IsClientReplay(client)) continue;
 		if (client==searchClient) continue;
 		float value = NGramSimilarity(clientNGrams[client], clientNGrams[searchClient]);
 //		if (value) PrintToChatAll("Name similarity with %i (%.0f%%)", client, value*100);

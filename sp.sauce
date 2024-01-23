@@ -21,26 +21,32 @@ dependency github sbpp/sourcebans-pp php81-SNAPSHOT
 
 spcomp -O2 additionalsettings.sp
 spcomp -O2 autoready.sp
+spcomp -O2 fartcombat.sp
 spcomp -O2 mapprops.sp
 spcomp -O2 namechecker.sp
 spcomp -O2 quicktracks.sp
+spcomp -O2 raidblocker.sp
 spcomp -O2 slapandbury.sp
 spcomp -O2 spec_ghost.sp
 spcomp -O2 tdm_tickets.sp
 spcomp -O2 tpask.sp
 spcomp -O2 trainstreak.sp
+spcomp -O2 wallclimb.sp
 
 # pack and push zip
 
 with files
  additionalsettings.smx
  autoready.smx
+ fartcombat.smx
  mapprops.smx
  namechecker.smx
  quicktracks.smx
+ raidblocker.smx
  slapandbury.smx
  spec_ghost.smx
  tdm_tickets.smx
  tpask.smx
  trainstreak.smx
+ wallclimb.smx
 :release zip Compiled.zip

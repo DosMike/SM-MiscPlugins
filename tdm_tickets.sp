@@ -7,7 +7,7 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "22w20a"
+#define PLUGIN_VERSION "23w49a"
 
 #define TEAM_RED 2
 #define TEAM_BLUE 3
@@ -25,15 +25,13 @@ ConVar cvar_mp_tournament_blueteamname;
 ConVar cvar_mp_tournament_redteamname;
 ConVar cvar_sm_tdm_tickets;
 
-int g_iTickets[5];
+int g_iTickets[5]; // 0,1 = debounce values for 2,3 ; 2,3 = counters for teams ; 4 = limit
 bool g_bWaitingForPlayers;
 bool g_bActive; //fake mp tournament? (only fake while game is running so the hud doesn't pop up)
+bool g_late;
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
-	if (late) {
-		strcopy(error, err_max, "Don't feel like supporting late loading, change map please");
-		return APLRes_SilentFailure;
-	}
+	g_late = late;
 	return APLRes_Success;
 }
 
@@ -48,6 +46,19 @@ public void OnPluginStart() {
 	HookEvent("teamplay_round_start", OnRoundStart, EventHookMode_Post);
 	
 	CreateTimer(0.5, Timer_TicketUpdate, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+
+	if (g_late) {
+		for (int client=1; client <= MaxClients; client++) {
+			if (IsClientInGame(client)) {
+				OnEntityCreated(client, "player");
+				if (IsClientAuthorized(client)) {
+					OnClientPostAdminCheck(client);
+				}
+			}
+		}
+		g_bWaitingForPlayers = false;
+		OnRoundStart(null, "", true);
+	}
 }
 
 public void OnConVarChanged_sm_tdm_tickets(ConVar convar, const char[] oldValue, const char[] newValue) {
@@ -59,11 +70,11 @@ public void OnConVarChanged_sm_tdm_tickets(ConVar convar, const char[] oldValue,
 public Action Timer_TicketUpdate(Handle timer) {
 	if (g_iTickets[TEAM_BLUE] != g_iTickets[TEAM_BLUE-2]) {
 		g_iTickets[TEAM_BLUE-2] = g_iTickets[TEAM_BLUE];
-		SendConVarValueAll(cvar_mp_tournament_blueteamname, "Tickets: %i", g_iTickets[TEAM_BLUE]);
+		SendConVarValueAll(cvar_mp_tournament_blueteamname, "Respawns: %i", g_iTickets[TEAM_BLUE]);
 	}
 	if (g_iTickets[TEAM_RED] != g_iTickets[TEAM_RED-2]) {
 		g_iTickets[TEAM_RED-2] = g_iTickets[TEAM_RED];
-		SendConVarValueAll(cvar_mp_tournament_redteamname, "Tickets: %i", g_iTickets[TEAM_RED]);
+		SendConVarValueAll(cvar_mp_tournament_redteamname, "Respawns: %i", g_iTickets[TEAM_RED]);
 	}
 	return Plugin_Continue;
 }
@@ -89,8 +100,16 @@ public void OnMapEnd() {
 	SetTournamentMode(false);
 }
 
+public void OnPluginEnd() {
+	char buffer[64];
+	cvar_mp_tournament_blueteamname.GetString(buffer, sizeof(buffer));
+	SendConVarValueAll(cvar_mp_tournament_blueteamname, "%s", buffer);
+	cvar_mp_tournament_redteamname.GetString(buffer, sizeof(buffer));
+	SendConVarValueAll(cvar_mp_tournament_redteamname, "%s", buffer);
+	SetTournamentMode(false);
+}
 
-public void OnClientPutInServer(int client) {
+public void OnClientPostAdminCheck(int client) {
 	if (!IsFakeClient(client))
 		SendConVarValue(client, cvar_mp_tournament, g_bActive?"1":"0");
 }
