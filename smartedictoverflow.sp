@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION "23w48a"
+#define PLUGIN_VERSION "25w25a"
 #include <sdktools>
 #include <sdkhooks>
 #include <entity>
@@ -33,6 +33,7 @@ ConVar cvarEdictLimit;
 int g_iEdictLimitWarn=2000;
 ConVar cvarEdictWarnLimit;
 ConVar cvarEdictWarnOverlay;
+float g_lastWarn;
 int g_iEdictAction=1;
 ConVar cvarEdictAction;
 int g_iEdictsPerPlayer=11;
@@ -45,6 +46,7 @@ int g_iEdictsCounted;
 bool g_bEdictCounterDesync=false;
 Handle g_hSecondTimer;
 
+bool g_bOverlayOverride=false;
 bool clientShowInfo[MAXPLAYERS+1];
 
 enum {
@@ -84,8 +86,8 @@ public void OnPluginStart() {
 	HookEvent("teamplay_round_active", OnRoundActivate, EventHookMode_Post);
 	HookEvent("arena_round_start", OnRoundActivate, EventHookMode_Post);
 	
-	RegAdminCmd("seop_info", CmdSeopInfo, ADMFLAG_GENERIC, "Get detailed edict info");
-	RegAdminCmd("seop_track", CmdSeopTrack, ADMFLAG_GENERIC, "Toggle edict tracking overlay for you");
+	RegConsoleCmd("seop_info", CmdSeopInfo, "Get detailed edict info");
+	RegConsoleCmd("seop_track", CmdSeopTrack, "Toggle edict tracking overlay for you");
 }
 public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
 	if (convar == cvarEdictLimit) {
@@ -148,7 +150,7 @@ void StartTracking() {
 public void OnMapEnd() {
 	//PrintToServer("EVENT MapEnd");
 	g_bMapChange = true;
-	KillTimer(g_hSecondTimer);
+	if (g_hSecondTimer != null) { KillTimer(g_hSecondTimer); g_hSecondTimer = null; }
 }
 public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast) {
 	bool full_reset = event.GetBool("full_reset");
@@ -186,8 +188,9 @@ void HandleEntitySpawn(int ref) {
 		PushEdictBin(entity);
 	}
 	
-	if (g_iEdictLimitWarn>0 && GetEdictCount() > g_iEdictLimitWarn && !g_bWarned) {
+	if (g_iEdictLimitWarn>0 && GetEdictCount() > g_iEdictLimitWarn && !g_bWarned && GetGameTime() - g_lastWarn > 30.0) {
 		g_bWarned = true;
+		g_lastWarn = GetGameTime();
 		PrintToChatAll("The entity limit is almost reached, please slow down");
 	}
 }
@@ -219,9 +222,17 @@ public void TimerWarnPerformance() {
 		gameLimit -= cvarLowedictThreshold.IntValue;
 	}
 	//prepare hud text
-	bool auto = edicts > g_iEdictLimitWarn; //are we close to the limit, so we ignore client prefs?
-	if (edicts < g_iEdictLimitWarn) {
+	//are we close to the limit, so we ignore client prefs?
+	int slack = 50;
+	if (!g_bOverlayOverride && edicts > g_iEdictLimitWarn) g_bOverlayOverride = true;
+	if (g_bOverlayOverride && edicts < g_iEdictLimitWarn - slack) g_bOverlayOverride = false;
+	//pick color
+	if (edicts < g_iEdictLimitWarn - slack) {
 		SetHudTextParams(1.0, 0.1, 1.0, 255, 255, 255, 255);
+	} else if (edicts < g_iEdictLimitWarn) {
+		// the space we have until we exceed slack will be mapped white to yellow
+		int color = RoundToFloor(255.0 - float(g_iEdictLimitWarn - edicts) / float(slack) * 255.0);
+		SetHudTextParams(1.0, 0.1, 1.0, 255, 255, color, 255);
 	} else {
 		int span = math_max( g_iEdictLimit-g_iEdictLimitWarn, 1 );
 		int g = RoundToFloor((float(getEffectiveEdictLimit()-edicts) / span) * 255.0);
@@ -230,7 +241,7 @@ public void TimerWarnPerformance() {
 	}
 	//prepare for permission filter
 	int flagBits=0;
-	if (auto) {
+	if (g_bOverlayOverride) {
 		char flags[4];
 		cvarEdictWarnOverlay.GetString(flags,sizeof(flags));
 		if (strlen(flags) != 1) {

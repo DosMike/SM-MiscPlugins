@@ -163,7 +163,7 @@ void FreenameClient(int client) {
 int FindPlayerWithSimilarName(int searchClient, float& similarity) {
 	int found;
 	for (int client=1; client<=MaxClients; client+=1) {
-		if (IsFakeClient(client) || IsClientSourceTV(client) || IsClientReplay(client)) continue;
+		if (!IsClientInGame(client) || IsFakeClient(client) || IsClientSourceTV(client) || IsClientReplay(client)) continue;
 		if (client==searchClient) continue;
 		float value = NGramSimilarity(clientNGrams[client], clientNGrams[searchClient]);
 //		if (value) PrintToChatAll("Name similarity with %i (%.0f%%)", client, value*100);
@@ -201,23 +201,37 @@ void CreatePlayerNGram(int client, const char[] inname) {
 	ArrayList list = clientNGrams[client];
 	//try to remove engine duplicate suffix, scan right to left
 	char name[NAME_MAX_LENGTH];
-	strcopy(name, sizeof(name), inname);
 	
 	int len = strlen(inname);
 	if (len == 0) return; //?
 	int idx = 0;
+	bool skipprefix = false;
 	if (len > 3 && inname[idx] == '(') {
 		do { idx += 1; }
 		while (idx < len && inname[idx] >= '0' && inname[idx] <= '9');
 		if (idx+1 < len && inname[idx] == ')') {
 			idx += 1;
-			strcopy(name, sizeof(name), inname[idx]);
+			skipprefix = true;
 		}
 	}
+	//make a copy of name without "duplicate number prefix" or spaces
+	if (!skipprefix) idx = 0;
+	int cpyidx = 0;
+	for (; idx < len;) {
+		if (inname[idx] <= 32) { idx++; continue; }// ignore spaces and control chars
+		if (inname[idx] < 128) { name[cpyidx++] = inname[idx++]; }
+		//construct utf8-char
+		int codepoint;
+		int width = getCodepoint(inname[idx], codepoint);
+		if (isMBSpace(codepoint)) { idx += width; }
+		else while (width-->0) { name[cpyidx++] = inname[idx++]; }
+	}
+	name[cpyidx] = 0;
 	//create ngrams, i'll use trigrams as that fits a cell
 	// im using bi-grams are names are short. int would work for up to 4-grams
 	
 	len = strlen(name);
+	if (len == 0) { name=" "; len=1; } //we need something, if all space, use space
 	int gram = 0;
 	for (int i=0; i<len; i+=1) {
 		char c = name[i];
@@ -238,4 +252,28 @@ void CreatePlayerNGram(int client, const char[] inname) {
 //	for (int i=0;i<list.Length;i++) {
 //		PrintToChatAll("  %04X", list.Get(i));
 //	}
+}
+
+bool isMBSpace(int codepoint) {
+	switch(codepoint) {
+		case 0x20, 0xA0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 
+		     0x2007, 0x2008, 0x2009, 0x200A, 0x200B, 0x200C, 0x200D, 0x202f, 0x205f, 0x3000:
+			return true;
+		default:
+			return false;
+	}
+}
+
+int getCodepoint(const char[] string, int& codepoint) {
+	if (string[0] < 128) { codepoint = string[0]; return 1; } //ASCII
+	int bytes=0;
+	if ((string[0] & 0xe0) == 0xc0) { bytes = 2; codepoint = string[0]&0x1f; }
+	else if ((string[0] & 0xf0) == 0xe0) { bytes = 3; codepoint = string[0]&0x0f; }
+	else if ((string[0] & 0xf8) == 0xf0) { bytes = 4; codepoint = string[0]&0x07; }
+	else { codepoint = string[0]; return 1; } //broken, ignore
+	for (int c=1; c<bytes; c++) {
+		if ((string[0] & 0xc0) != 0x80) { codepoint = string[0]; return 1; } //broken, ignore
+		codepoint = (codepoint << 6) | (string[c] & 0x3f);
+	}
+	return bytes;
 }

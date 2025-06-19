@@ -135,8 +135,11 @@ void CheckGhost(int client) {
         ScaleVector(up, 4.0);
         SubtractVectors(pos, up, pos);
         int ghost = EntRefToEntIndex(clientGhostRef[client]);
-        TeleportEntity(ghost, pos, ang, NULL_VECTOR);
-        SetEntPropFloat(ghost, Prop_Data, "m_flSimulationTime", GetGameTime());
+
+        int interpolFrame = GetEntProp(ghost, Prop_Send, "m_ubInterpolationFrame");
+        TeleportEntity(ghost, pos, ang, _);
+        SetEntProp(ghost, Prop_Send, "m_flSimulationTime", view_as<int>(GetGameTime()));
+        SetEntProp(ghost, Prop_Send, "m_ubInterpolationFrame", interpolFrame);
     }
 }
 
